@@ -3,13 +3,26 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Content OS API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: workspaces
+    description: Workspace management
+  - name: integrations
+    description: HighLevel integration management
+  - name: campaigns
+    description: Campaign management
+  - name: planner-items
+    description: Planner item management
+  - name: templates
+    description: Template management
+  - name: dashboard
+    description: Dashboard and analytics
+
 paths:
   /healthz:
     get:
@@ -24,6 +37,791 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Workspace
+  /workspaces:
+    get:
+      operationId: getWorkspaces
+      tags: [workspaces]
+      summary: List workspaces
+      responses:
+        "200":
+          description: List of workspaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workspace"
+    post:
+      operationId: createWorkspace
+      tags: [workspaces]
+      summary: Create workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceBody"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+
+  /workspaces/{id}:
+    get:
+      operationId: getWorkspace
+      tags: [workspaces]
+      summary: Get workspace
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+    patch:
+      operationId: updateWorkspace
+      tags: [workspaces]
+      summary: Update workspace
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceBody"
+      responses:
+        "200":
+          description: Updated workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+
+  # Integrations
+  /workspaces/{workspaceId}/integrations:
+    get:
+      operationId: getIntegrations
+      tags: [integrations]
+      summary: List integrations for workspace
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Integration"
+    post:
+      operationId: createIntegration
+      tags: [integrations]
+      summary: Create or update HighLevel integration
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIntegrationBody"
+      responses:
+        "201":
+          description: Integration created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+
+  /workspaces/{workspaceId}/integrations/{id}:
+    get:
+      operationId: getIntegration
+      tags: [integrations]
+      summary: Get integration
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+    patch:
+      operationId: updateIntegration
+      tags: [integrations]
+      summary: Update integration (e.g. rotate token)
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIntegrationBody"
+      responses:
+        "200":
+          description: Updated integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+    delete:
+      operationId: deleteIntegration
+      tags: [integrations]
+      summary: Delete integration
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workspaces/{workspaceId}/integrations/{id}/validate:
+    post:
+      operationId: validateIntegration
+      tags: [integrations]
+      summary: Validate HighLevel connection
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+
+  /workspaces/{workspaceId}/integrations/{id}/sync:
+    post:
+      operationId: syncIntegration
+      tags: [integrations]
+      summary: Trigger HighLevel sync
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+
+  # Campaigns
+  /workspaces/{workspaceId}/campaigns:
+    get:
+      operationId: getCampaigns
+      tags: [campaigns]
+      summary: List campaigns
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create campaign
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignBody"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /workspaces/{workspaceId}/campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get campaign
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update campaign
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCampaignBody"
+      responses:
+        "200":
+          description: Updated campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete campaign
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  # Planner Items
+  /workspaces/{workspaceId}/planner-items:
+    get:
+      operationId: getPlannerItems
+      tags: [planner-items]
+      summary: List planner items
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: string
+          description: "YYYY-MM format"
+        - name: campaignId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: laneGroup
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: approvalStatus
+          in: query
+          schema:
+            type: string
+        - name: ownerId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: syncStatus
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of planner items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlannerItem"
+    post:
+      operationId: createPlannerItem
+      tags: [planner-items]
+      summary: Create planner item
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlannerItemBody"
+      responses:
+        "201":
+          description: Planner item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannerItem"
+
+  /workspaces/{workspaceId}/planner-items/{id}:
+    get:
+      operationId: getPlannerItem
+      tags: [planner-items]
+      summary: Get planner item
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Planner item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannerItem"
+    patch:
+      operationId: updatePlannerItem
+      tags: [planner-items]
+      summary: Update planner item
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlannerItemBody"
+      responses:
+        "200":
+          description: Updated planner item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannerItem"
+    delete:
+      operationId: deletePlannerItem
+      tags: [planner-items]
+      summary: Delete planner item
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workspaces/{workspaceId}/planner-items/{id}/duplicate:
+    post:
+      operationId: duplicatePlannerItem
+      tags: [planner-items]
+      summary: Duplicate planner item
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Duplicated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlannerItem"
+
+  /workspaces/{workspaceId}/planner-items/{id}/push:
+    post:
+      operationId: pushPlannerItemToHighLevel
+      tags: [planner-items]
+      summary: Push planner item to HighLevel
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Push result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+
+  # Templates
+  /workspaces/{workspaceId}/templates:
+    get:
+      operationId: getTemplates
+      tags: [templates]
+      summary: List templates
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+    post:
+      operationId: createTemplate
+      tags: [templates]
+      summary: Create template
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemplateBody"
+      responses:
+        "201":
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+
+  /workspaces/{workspaceId}/templates/{id}:
+    get:
+      operationId: getTemplate
+      tags: [templates]
+      summary: Get template
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete template
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+
+  /workspaces/{workspaceId}/templates/{id}/apply:
+    post:
+      operationId: applyTemplate
+      tags: [templates]
+      summary: Apply template to a month
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyTemplateBody"
+      responses:
+        "200":
+          description: Applied items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlannerItem"
+
+  # Dashboard / Analytics
+  /workspaces/{workspaceId}/dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary metrics
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: string
+          description: "YYYY-MM format"
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /workspaces/{workspaceId}/dashboard/channel-breakdown:
+    get:
+      operationId: getChannelBreakdown
+      tags: [dashboard]
+      summary: Get per-channel item breakdown
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Channel breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelBreakdownItem"
+
+  /workspaces/{workspaceId}/dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity/sync log
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityLogEntry"
+
+  /workspaces/{workspaceId}/dashboard/overdue:
+    get:
+      operationId: getOverdueItems
+      tags: [dashboard]
+      summary: Get overdue planner items
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Overdue items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlannerItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +832,605 @@ components:
       required:
         - status
 
+    DeleteResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+
+    Workspace:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        timezone:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - slug
+        - timezone
+        - createdAt
+        - updatedAt
+
+    CreateWorkspaceBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        timezone:
+          type: string
+      required:
+        - name
+        - slug
+        - timezone
+
+    UpdateWorkspaceBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        timezone:
+          type: string
+
+    Integration:
+      type: object
+      properties:
+        id:
+          type: integer
+        workspaceId:
+          type: integer
+        provider:
+          type: string
+        authType:
+          type: string
+        locationId:
+          type: ["string", "null"]
+        tokenLastFour:
+          type: ["string", "null"]
+        scopes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [connected, disconnected, token_invalid, missing_scope, sync_delayed]
+        lastValidatedAt:
+          type: ["string", "null"]
+        lastSyncedAt:
+          type: ["string", "null"]
+        tokenRotationDueAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - workspaceId
+        - provider
+        - authType
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateIntegrationBody:
+      type: object
+      properties:
+        provider:
+          type: string
+        authType:
+          type: string
+        token:
+          type: string
+        locationId:
+          type: string
+        scopes:
+          type: ["string", "null"]
+      required:
+        - provider
+        - authType
+        - token
+        - locationId
+
+    UpdateIntegrationBody:
+      type: object
+      properties:
+        token:
+          type: string
+        locationId:
+          type: string
+        scopes:
+          type: ["string", "null"]
+
+    ValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        status:
+          type: string
+        message:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+      required:
+        - valid
+        - status
+        - message
+
+    SyncResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        itemsSynced:
+          type: integer
+        itemsFailed:
+          type: integer
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: string
+      required:
+        - success
+        - message
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        workspaceId:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [promo, launch, evergreen, holiday, event, other]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        theme:
+          type: ["string", "null"]
+        objective:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, active, completed, archived]
+        color:
+          type: ["string", "null"]
+        itemCount:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - workspaceId
+        - name
+        - type
+        - status
+        - itemCount
+        - createdAt
+        - updatedAt
+
+    CreateCampaignBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [promo, launch, evergreen, holiday, event, other]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        theme:
+          type: ["string", "null"]
+        objective:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, active, completed, archived]
+        color:
+          type: ["string", "null"]
+      required:
+        - name
+        - type
+        - status
+
+    UpdateCampaignBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [promo, launch, evergreen, holiday, event, other]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        theme:
+          type: ["string", "null"]
+        objective:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, active, completed, archived]
+        color:
+          type: ["string", "null"]
+
+    PlannerItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        workspaceId:
+          type: integer
+        campaignId:
+          type: ["integer", "null"]
+        campaignName:
+          type: ["string", "null"]
+        laneGroup:
+          type: string
+          enum: [marketing_moments, site, paid_digital, email, social, influencers, affiliates]
+        laneName:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        channelType:
+          type: ["string", "null"]
+        contentFormat:
+          type: ["string", "null"]
+        plannedDate:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        ownerName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, planned, scheduled, synced, published, failed, archived]
+        approvalStatus:
+          type: string
+          enum: [pending, approved, needs_changes, approved_to_publish]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        notes:
+          type: ["string", "null"]
+        assetLinks:
+          type: array
+          items:
+            type: string
+        externalSource:
+          type: string
+          enum: [planner, highlevel]
+        externalObjectType:
+          type: ["string", "null"]
+        externalObjectId:
+          type: ["string", "null"]
+        syncStatus:
+          type: string
+          enum: [not_synced, syncing, synced, failed, out_of_date]
+        lastSyncAt:
+          type: ["string", "null"]
+        publishedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - workspaceId
+        - laneGroup
+        - laneName
+        - title
+        - status
+        - approvalStatus
+        - priority
+        - assetLinks
+        - externalSource
+        - syncStatus
+        - createdAt
+        - updatedAt
+
+    CreatePlannerItemBody:
+      type: object
+      properties:
+        campaignId:
+          type: ["integer", "null"]
+        laneGroup:
+          type: string
+          enum: [marketing_moments, site, paid_digital, email, social, influencers, affiliates]
+        laneName:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        channelType:
+          type: ["string", "null"]
+        contentFormat:
+          type: ["string", "null"]
+        plannedDate:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        ownerName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, planned, scheduled, synced, published, failed, archived]
+        approvalStatus:
+          type: string
+          enum: [pending, approved, needs_changes, approved_to_publish]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        notes:
+          type: ["string", "null"]
+        assetLinks:
+          type: array
+          items:
+            type: string
+      required:
+        - laneGroup
+        - laneName
+        - title
+
+    UpdatePlannerItemBody:
+      type: object
+      properties:
+        campaignId:
+          type: ["integer", "null"]
+        laneGroup:
+          type: string
+          enum: [marketing_moments, site, paid_digital, email, social, influencers, affiliates]
+        laneName:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        channelType:
+          type: ["string", "null"]
+        contentFormat:
+          type: ["string", "null"]
+        plannedDate:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        ownerName:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, planned, scheduled, synced, published, failed, archived]
+        approvalStatus:
+          type: string
+          enum: [pending, approved, needs_changes, approved_to_publish]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        notes:
+          type: ["string", "null"]
+        assetLinks:
+          type: array
+          items:
+            type: string
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: integer
+        workspaceId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+        itemCount:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateItem"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - workspaceId
+        - name
+        - category
+        - itemCount
+        - items
+        - createdAt
+        - updatedAt
+
+    TemplateItem:
+      type: object
+      properties:
+        laneGroup:
+          type: string
+        laneName:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        dayOffset:
+          type: integer
+        channelType:
+          type: ["string", "null"]
+        contentFormat:
+          type: ["string", "null"]
+        priority:
+          type: string
+      required:
+        - laneGroup
+        - laneName
+        - title
+        - dayOffset
+        - priority
+
+    CreateTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateItem"
+      required:
+        - name
+        - category
+        - items
+
+    ApplyTemplateBody:
+      type: object
+      properties:
+        month:
+          type: string
+          description: "YYYY-MM"
+        startDate:
+          type: string
+          description: "YYYY-MM-DD"
+      required:
+        - month
+        - startDate
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalPlanned:
+          type: integer
+        totalPublished:
+          type: integer
+        totalDraft:
+          type: integer
+        totalScheduled:
+          type: integer
+        totalFailed:
+          type: integer
+        totalOverdue:
+          type: integer
+        syncedCount:
+          type: integer
+        completionRate:
+          type: number
+        activeCampaigns:
+          type: integer
+        connectedIntegrations:
+          type: integer
+      required:
+        - totalPlanned
+        - totalPublished
+        - totalDraft
+        - totalScheduled
+        - totalFailed
+        - totalOverdue
+        - syncedCount
+        - completionRate
+        - activeCampaigns
+        - connectedIntegrations
+
+    ChannelBreakdownItem:
+      type: object
+      properties:
+        laneGroup:
+          type: string
+        laneName:
+          type: string
+        total:
+          type: integer
+        published:
+          type: integer
+        planned:
+          type: integer
+        draft:
+          type: integer
+        failed:
+          type: integer
+      required:
+        - laneGroup
+        - laneName
+        - total
+        - published
+        - planned
+        - draft
+        - failed
+
+    ActivityLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        workspaceId:
+          type: integer
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: ["integer", "null"]
+        entityTitle:
+          type: ["string", "null"]
+        details:
+          type: ["string", "null"]
+        status:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - workspaceId
+        - action
+        - entityType
+        - status
+        - createdAt

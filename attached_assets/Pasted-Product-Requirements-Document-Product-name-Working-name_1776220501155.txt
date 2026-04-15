@@ -1,0 +1,633 @@
+Product Requirements Document
+Product name
+
+Working name: Content OS for HighLevel
+
+Product vision
+
+Build a modular planning and execution platform for businesses that grow through short-form and long-form content.
+
+The product starts with a master marketing planner that acts as the operating system for monthly marketing execution. Over time, new modules plug into the same workspace, data model, and HighLevel connection layer.
+
+Why this product should exist
+
+Right now, most growing businesses have content ideas, partial plans, scattered assets, and disconnected execution. Their blog plan lives in one place, social ideas in another, email campaigns somewhere else, and HighLevel execution happens after the fact.
+
+Your spreadsheet already points to the real need. This is not just a content calendar. It is a cross-channel marketing command center.
+
+The first module should let a business:
+
+plan every major marketing motion in one place
+see what is scheduled by day, week, and month
+connect planning to real execution inside HighLevel
+pull activity back from HighLevel so the planner becomes the source of truth, not a dead document
+Users
+
+Primary user:
+Business owner, marketing lead, or operator at a content-driven service business.
+
+Secondary users:
+Content manager, VA, agency team member, strategist.
+
+Admin user:
+Internal team member who configures templates, module defaults, onboarding, and future module rollout.
+
+Product principles
+One plan, many channels
+The user should not have to manage separate systems for blog, email, social, paid, and site updates.
+Plan first, push second
+The planner is the operating layer. HighLevel is the execution layer.
+Modular from day one
+The calendar module is first, but the architecture must support future modules like Audience Alignment, Retention Roadmap, Thumbnail Planning, Idea Ladder, Idea Heist, and Short Form Content Planning.
+Low-friction onboarding
+The user should be able to connect HighLevel in minutes with a guided flow.
+Trustworthy sync
+The system must clearly show what came from HighLevel, what was created in the planner, and whether items are synced, draft, published, failed, or out of date.
+1. Module 1, Master Marketing Planner
+Module goal
+
+Create a monthly marketing planning workspace that organizes all marketing activity in one calendar-driven view and syncs relevant execution data with HighLevel.
+
+Spreadsheet-informed scope
+
+Your attached planner shows these core lanes:
+
+Marketing Moments
+Campaigns, promos, product launches, holidays, livestreams, sweepstakes, YouTube videos
+
+Site
+Homepage hero, promo banner, YouTube link, navigation menu, bundle offers, blog, other
+
+Paid Digital
+Meta, Pinterest paid, Pinterest organic, Google
+
+Email
+Main email campaign, segment or flow email, SMS, coordinated promotion
+
+Social
+Facebook, IG post, IG stories, TikTok, podcasts, YouTubers
+
+Influencers
+Multiple influencer slots
+
+Affiliates
+Multiple affiliate slots
+
+That is the right backbone for V1. It gives the product a real operating model instead of a generic calendar.
+
+Core jobs to be done
+
+The user wants to:
+
+plan the month across all channels
+assign dates and owners
+connect each item to a campaign, theme, or launch
+see gaps before the month starts
+push eligible items into HighLevel
+pull live platform status back into the planner
+review what was planned versus what actually shipped
+V1 feature set
+
+The first release should include:
+
+Monthly calendar view
+A full month view with channel lanes and daily cards.
+Channel board view
+A grouped board by lane, like Email, Social, Site, Paid, Influencers, Affiliates.
+Campaign view
+All items tied to one campaign, promo, launch, or theme.
+Item detail drawer
+Every planned item opens into a structured record with metadata, owner, status, due dates, HighLevel sync state, notes, and asset links.
+Templates
+Prebuilt monthly templates so users can start from a proven structure.
+HighLevel sync
+Pull existing supported activities from HighLevel. Push eligible items into HighLevel for supported surfaces.
+Status and audit trail
+Show draft, planned, scheduled, synced, published, failed, archived.
+Approval flow
+Simple approve / needs changes / approved to publish states.
+Filters
+By channel, campaign, owner, status, month, and integration status.
+Reporting
+Planned vs published, by channel and by month.
+2. Product scope, V1 and beyond
+V1 in scope
+account creation and workspace setup
+HighLevel connection via Private Integration Token plus Location ID
+monthly planner module
+calendar, board, and campaign views
+planner items for all workbook categories
+push to supported HighLevel objects
+pull from supported HighLevel objects
+manual item creation and editing
+basic approvals
+templates
+activity log
+modular architecture for future modules
+V1 out of scope
+full DAM
+AI content generation inside the planner
+full social media asset editor
+full analytics attribution suite
+multi-platform publishing outside HighLevel
+advanced workflow builder
+billing automation
+team-based granular permissions beyond basic roles
+Planned later modules
+
+These should be treated as first-class modules in the product shell, not bolt-ons:
+
+Audience Alignment
+Retention Roadmap
+Thumbnail Planning
+Idea Ladder
+Idea Heist
+Short Form Content Planning
+future modules as new opportunities arise
+3. Onboarding and HighLevel connection
+Product decision
+
+For MVP, support the manual token flow you requested.
+
+But architect it as an auth provider layer with:
+
+auth type = private_token
+auth type = oauth_marketplace
+
+That lets you launch now and move to OAuth later without rewriting the rest of the platform. HighLevel says private integrations are ideal for internal tools and custom systems without building a public app, while OAuth is the right choice for public integrations, Marketplace apps, or broader multi-account access.
+
+Onboarding flow
+
+Step 1
+Create account or sign in
+
+Step 2
+Create workspace
+
+Step 3
+Connect HighLevel
+
+Step 4
+Guided instructions for:
+
+create Private Integration
+copy token
+capture Location ID
+test connection
+
+Step 5
+Select channels to import
+
+blog
+social planner
+email
+SMS
+website content, later if supported
+campaigns
+
+Step 6
+Choose a monthly template
+
+Step 7
+Land on planner with starter records
+
+Guided HighLevel instructions
+
+HighLevel’s docs say users create a Private Integration in settings, name it, select only the required scopes, and copy the token at creation time because they will not be able to view that same token again later. HighLevel also recommends rotating tokens every 90 days, with a 7-day overlap window during rotation. That means your connector UX needs a “last rotated,” “rotation due,” and “replace token” flow from the start.
+
+How to help users find Location ID
+
+HighLevel documents two simple ways:
+
+Settings → Business Profile
+directly from the URL, after /location/ or in the locationId= parameter
+Connection health UX
+
+The product should show:
+
+connected
+token invalid
+token missing scope
+location mismatch
+sync delayed
+reconnect required
+Security requirements
+encrypt tokens at rest
+never display full token after save
+display only last 4 characters
+test required scopes on connection
+support token replacement without deleting workspace data
+log all sync and publish actions
+4. HighLevel integration strategy
+Key architectural call
+
+Do not build this as one giant direct-to-HighLevel calendar.
+
+Build three layers:
+
+Planner layer
+Your internal system of record
+Connector layer
+Auth, scope validation, rate limiting, retry, sync mapping
+Adapter layer
+Per HighLevel surface, blog, social, email, campaigns, future surfaces
+Why
+
+This lets future modules reuse:
+
+auth
+workspace
+user roles
+taxonomy
+content themes
+campaign objects
+reporting
+sync jobs
+HighLevel API reality
+
+Current HighLevel docs clearly expose:
+
+social planner post endpoints including get, create, edit, and delete
+blog endpoints including create, update, list blogs, and list blog posts by blog
+email campaign retrieval endpoints, plus campaign statistics and draft update endpoints
+webhooks and real-time event delivery for many platform events
+Important product constraint
+
+I found strong support for creating social posts and blog posts in the current docs I reviewed. For email, I found list, stats, and draft update coverage, but I did not find a clearly surfaced create-email-campaign endpoint in that same pass. So for V1, I would treat email as:
+
+read and sync first
+deep-link into HighLevel for campaign creation if needed
+expand to draft creation only after confirming the exact write path in implementation
+Recommended sync model by surface
+Surface	Pull from HighLevel	Push to HighLevel	V1 Decision
+Social Planner	Yes	Yes	Full V1 support
+Blogs	Yes	Yes	Full V1 support
+Email campaigns	Yes	Partial, cautious	Sync first, controlled write later
+SMS planning	Planner-first	Later	V1 planning only
+Website elements	Planner-first	Later	V1 planning only
+Influencers	No native dependency	No	Planner-only
+Affiliates	No native dependency	No	Planner-only
+Rate limiting requirement
+
+HighLevel currently documents rate limits of 100 requests per 10 seconds per resource and 200,000 requests per day per resource. So sync must be queued, incremental, and retry-safe, not chatty.
+
+Eventing requirement
+
+Use webhooks where HighLevel supports the event you need, and polling only where webhook coverage is missing. HighLevel’s docs position webhooks as real-time notifications and expose a webhook logs dashboard for debugging delivery.
+
+5. Core data model
+Workspace
+
+Represents one customer account.
+
+IntegrationConnection
+workspace_id
+provider = HighLevel
+auth_type = private_token or oauth
+encrypted_token
+location_id
+scopes
+status
+last_validated_at
+last_synced_at
+token_rotation_due_at
+Module
+workspace_id
+module_type
+enabled
+configuration_json
+Campaign
+
+This is the internal umbrella object.
+
+id
+name
+type, promo, launch, evergreen, holiday, event
+start_date
+end_date
+theme
+objective
+status
+PlannerItem
+
+This is the core record for V1.
+
+id
+workspace_id
+campaign_id
+lane_group
+lane_name
+title
+description
+channel_type
+content_format
+planned_date
+due_date
+owner_id
+status
+approval_status
+priority
+notes
+asset_links
+external_source = planner or HighLevel
+external_object_type
+external_object_id
+sync_status
+last_sync_at
+published_at
+Taxonomy
+
+Shared across modules:
+
+audience
+offer
+content pillar
+funnel stage
+CTA
+campaign theme
+asset type
+
+This shared taxonomy is how future modules connect to the planner.
+
+6. Information architecture
+App shell
+
+Left nav:
+
+Dashboard
+Master Marketing Planner
+Campaigns
+Content Library, later
+Modules
+Integrations
+Templates
+Settings
+Planner navigation
+
+Top controls:
+
+month selector
+filters
+campaign selector
+lane visibility
+create item
+sync now
+
+Main tabs:
+
+Calendar
+Board
+Campaigns
+Timeline
+Published
+Templates
+Planner item structure
+
+Each item should include:
+
+title
+lane
+parent campaign
+planned date
+owner
+status
+approval
+HighLevel sync state
+destination object
+notes
+links to asset or brief
+publish history
+7. User stories
+Business owner
+
+I want to see my entire month in one place so I know whether my marketing is actually coordinated.
+
+Marketing manager
+
+I want to plan blog, social, email, paid, and site updates together so launches do not break across channels.
+
+VA
+
+I want clear daily assignments and publish status so I know what needs action.
+
+Agency strategist
+
+I want a reusable monthly framework that can be loaded for each client.
+
+Admin
+
+I want the platform to support more modules later without rebuilding the core.
+
+8. Functional requirements
+Calendar
+
+The system must:
+
+show all planner items by month
+support drag-and-drop rescheduling
+group by lane
+show lane color and status
+open item details inline
+Planner items
+
+The system must:
+
+create, edit, duplicate, archive
+support recurring patterns
+support notes and links
+support campaign assignment
+support manual and imported items
+Templates
+
+The system must:
+
+let admins create master monthly templates
+let users apply a template to a new month
+preserve existing items when applying template selectively
+Sync
+
+The system must:
+
+validate connection on demand
+pull supported objects from HighLevel
+map external IDs to local IDs
+avoid duplicate imports
+show sync failures with clear reasons
+support manual push and scheduled sync jobs
+Permissions
+
+V1 roles:
+
+owner
+manager
+contributor
+viewer
+Reporting
+
+The system must:
+
+show planned vs published
+show per-channel completion
+show overdue items
+show sync failures
+show campaign execution coverage
+9. Non-functional requirements
+Performance
+month view should load in under 2 seconds for standard workspaces
+background sync should not block UI
+job queue required for import and publish operations
+Reliability
+idempotent sync jobs
+retry policy with backoff
+partial failure handling by channel
+Security
+encrypted credentials
+audit logs
+secure secrets management
+role-based permissions
+Scalability
+all modules must reuse shared workspace, taxonomy, permissions, and integration layers
+avoid hardcoding planner-only logic into the database or API
+10. Future module architecture
+
+This is where most products fail. They solve calendar first, then discover later modules do not fit.
+
+You should define a module contract now.
+
+Each future module should have:
+
+module metadata
+custom entities
+shared taxonomy access
+shared campaign access
+planner item references, if relevant
+optional HighLevel sync adapter
+optional analytics adapter
+Example
+
+Audience Alignment should not be a separate random tool.
+
+It should define:
+
+audience segments
+pains
+desires
+offers
+objections
+brand voice
+channel notes
+
+Then those values become available in:
+
+planner templates
+item briefs
+campaign setup
+future AI-assisted generation
+
+That same pattern applies to:
+
+Retention Roadmap
+Thumbnail Planning
+Idea Ladder
+Idea Heist
+Short Form Content Planning
+Product rule
+
+All modules should be able to write structured insights back into a shared layer, not just store isolated notes.
+
+11. Recommended MVP technical architecture
+Front end
+web app
+responsive desktop-first UX
+calendar-heavy UI with board secondary
+Back end
+API server
+relational database
+job queue for sync and publish
+secrets vault for tokens
+webhook receiver
+scheduler for pull sync
+Suggested services
+app database
+queue worker
+cron scheduler
+object storage for attachments, later
+audit logging service
+Domain model rule
+
+Keep HighLevel object mappings in adapter tables, not in the planner item table directly, beyond foreign references.
+
+12. Analytics and instrumentation
+
+Track:
+
+workspace created
+integration connected
+integration failed
+template applied
+planner item created
+planner item pushed
+item sync failed
+item published
+month completed
+channel coverage by month
+
+North star for V1:
+Percent of planned items that become synced or published.
+
+Supporting metrics:
+
+time to first connected workspace
+time to first planner item
+time to first synced object
+planner adoption by lane
+publish success rate
+monthly active workspaces
+13. Acceptance criteria for V1
+
+V1 is ready when:
+
+A new user can create an account, connect HighLevel with token plus Location ID, and validate the connection.
+A user can load a monthly planner template.
+A user can create and edit planner items across all workbook lanes.
+A user can filter by month, lane, campaign, owner, and status.
+The system can pull supported HighLevel social and blog objects.
+The system can push supported social posts and blog posts into HighLevel.
+The system can sync email campaign visibility and status at minimum.
+The system can show sync state and error state for each external item.
+The product can support at least one future module without schema redesign.
+14. Build phases
+Phase 0, foundation
+auth
+workspaces
+roles
+module framework
+integration connection model
+campaign model
+planner item model
+Phase 1, onboarding plus planner shell
+signup
+workspace creation
+connect HighLevel
+Location ID helper
+token validation
+first empty planner
+Phase 2, planner UX
+month view
+board view
+item drawer
+templates
+filters
+statuses
+Phase 3, HighLevel adapters
+social planner adapter
+blogs adapter
+email read adapter
+sync logs
+job runner
+Phase 4, polish
+approvals
+reports
+audit trail
+template cloning
+admin controls

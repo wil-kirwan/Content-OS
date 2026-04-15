@@ -199,10 +199,14 @@ async function fetchAllHLPosts(token: string, locationId: string, accountIds: st
   let hasMore = true;
 
   while (hasMore) {
-    const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/list?limit=${limit}&skip=${skip}`;
-    const body: Record<string, unknown> = { type: "all" };
+    const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/list`;
+    const body: Record<string, string> = {
+      type: "all",
+      limit: String(limit),
+      skip: String(skip),
+    };
     if (accountIds.length > 0) {
-      body.accountIds = accountIds;
+      body.accounts = accountIds.join(", ");
     }
     const response = await fetch(url, {
       method: "POST",

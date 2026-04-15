@@ -90,25 +90,30 @@ async function fetchAllHLPosts(token: string, locationId: string): Promise<HLPos
   let hasMore = true;
 
   while (hasMore) {
-    const url = `https://services.leadconnectorhq.com/social-media-posting/oauth/${locationId}/posts?limit=${limit}&skip=${skip}`;
+    const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/list?limit=${limit}&skip=${skip}`;
     const response = await fetch(url, {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         Version: "2021-07-28",
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        type: "all",
+      }),
     });
 
     if (!response.ok) {
       throw new Error(`HighLevel API returned ${response.status}: ${await response.text()}`);
     }
 
-    const data = await response.json() as { posts?: HLPost[]; data?: HLPost[]; count?: number; total?: number };
+    const data = await response.json() as { posts?: HLPost[]; data?: HLPost[]; count?: number; total?: number; meta?: { total?: number } };
     const posts: HLPost[] = data.posts || data.data || [];
     allPosts.push(...posts);
 
-    const total = data.count || data.total || 0;
+    const total = data.meta?.total || data.count || data.total || 0;
     skip += limit;
-    hasMore = posts.length === limit && skip < total;
+    hasMore = posts.length === limit && (total === 0 || skip < total);
   }
 
   return allPosts;

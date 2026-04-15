@@ -42,7 +42,7 @@ export const LANE_GROUPS = [
     lightColor: "bg-blue-50 border-blue-200",
     textColor: "text-blue-700",
     dotColor: "bg-blue-500",
-    laneNames: ["Facebook Post", "Instagram Post", "Instagram Stories", "TikTok", "Podcast", "YouTube Shorts"],
+    laneNames: ["Facebook Post", "Instagram Post", "Instagram Stories", "TikTok", "LinkedIn", "Twitter / X", "YouTube Shorts", "Google My Business", "Podcast"],
   },
   {
     key: "influencers",

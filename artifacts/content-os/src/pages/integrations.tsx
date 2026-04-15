@@ -8,6 +8,7 @@ import {
   useValidateIntegration,
   useSyncIntegration,
   getGetIntegrationsQueryKey,
+  getGetPlannerItemsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Plus, Shield, Eye, EyeOff,
-  Loader2, Trash2, RotateCw, Link2
+  Loader2, Trash2, RotateCw, Link2, ArrowDownToLine, X
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -30,6 +31,17 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   sync_delayed: { label: "Sync Delayed", color: "text-amber-600", icon: Clock },
 };
 
+interface SyncResult {
+  success: boolean;
+  itemsCreated: number;
+  itemsUpdated: number;
+  itemsSynced: number;
+  itemsFailed: number;
+  platformBreakdown: Record<string, number>;
+  message: string;
+  errors: string[];
+}
+
 export default function Integrations() {
   const { workspaceId } = useWorkspace();
   const queryClient = useQueryClient();
@@ -39,6 +51,8 @@ export default function Integrations() {
   const [token, setToken] = useState("");
   const [locationId, setLocationId] = useState("");
   const [newToken, setNewToken] = useState("");
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncingId, setSyncingId] = useState<number | null>(null);
 
   const { data: integrations, isLoading } = useGetIntegrations(
     workspaceId,
@@ -84,8 +98,14 @@ export default function Integrations() {
 
   const syncMutation = useSyncIntegration({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (data, variables) => {
         queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
+        queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
+        setSyncResult(data as SyncResult);
+        setSyncingId(null);
+      },
+      onError: () => {
+        setSyncingId(null);
       },
     },
   });
@@ -103,6 +123,12 @@ export default function Integrations() {
     updateMutation.mutate({ workspaceId, id, data: { token: newToken } });
   };
 
+  const handleSync = (integrationId: number) => {
+    setSyncingId(integrationId);
+    setSyncResult(null);
+    syncMutation.mutate({ workspaceId, id: integrationId });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -117,6 +143,49 @@ export default function Integrations() {
           </Button>
         )}
       </div>
+
+      {/* Sync Result Banner */}
+      {syncResult && (
+        <div className={`rounded-lg border p-4 ${syncResult.success ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              {syncResult.success
+                ? <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                : <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+              }
+              <div>
+                <p className={`font-semibold text-sm ${syncResult.success ? "text-green-800" : "text-orange-800"}`}>
+                  {syncResult.message}
+                </p>
+                {syncResult.itemsSynced > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant="outline" className="text-xs bg-white">
+                      {syncResult.itemsCreated} new posts added
+                    </Badge>
+                    <Badge variant="outline" className="text-xs bg-white">
+                      {syncResult.itemsUpdated} posts updated
+                    </Badge>
+                    {Object.entries(syncResult.platformBreakdown).map(([lane, count]) => (
+                      <Badge key={lane} variant="outline" className="text-xs bg-white">
+                        {lane}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {syncResult.errors.length > 0 && (
+                  <p className="mt-1 text-xs text-orange-700">{syncResult.errors[0]}</p>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Posts have been added to the Social section of your Master Planner.
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -140,6 +209,7 @@ export default function Integrations() {
             const statusConfig = STATUS_CONFIG[integration.status] || STATUS_CONFIG.disconnected;
             const StatusIcon = statusConfig.icon;
             const isRotationDue = integration.tokenRotationDueAt && new Date(integration.tokenRotationDueAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            const isSyncing = syncingId === integration.id;
             return (
               <Card key={integration.id}>
                 <CardHeader>
@@ -183,6 +253,16 @@ export default function Integrations() {
                       </p>
                     </div>
                   </div>
+
+                  {/* What gets synced */}
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                    <p className="font-semibold mb-1 flex items-center gap-1.5">
+                      <ArrowDownToLine className="h-3.5 w-3.5" />
+                      What syncs from HighLevel Social Planner
+                    </p>
+                    <p>Scheduled and published posts from Facebook, Instagram, Instagram Stories, TikTok, LinkedIn, Twitter/X, YouTube Shorts, Google My Business, and Podcasts will appear in the Social section of your Master Planner.</p>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"
@@ -195,12 +275,12 @@ export default function Integrations() {
                     </Button>
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={() => syncMutation.mutate({ workspaceId, id: integration.id })}
-                      disabled={syncMutation.isPending || integration.status !== "connected"}
+                      onClick={() => handleSync(integration.id)}
+                      disabled={isSyncing || integration.status !== "connected"}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
                     >
-                      {syncMutation.isPending ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
-                      Sync Now
+                      {isSyncing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <ArrowDownToLine className="h-3 w-3 mr-1.5" />}
+                      Sync Social Posts
                     </Button>
                     <Button
                       size="sm"

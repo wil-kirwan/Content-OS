@@ -6,8 +6,11 @@ import {
   useUpdatePlannerItem,
   useDeletePlannerItem,
   useGetCampaigns,
+  useGetIntegrations,
+  useSyncIntegration,
   getGetPlannerItemsQueryKey,
   getGetCampaignsQueryKey,
+  getGetIntegrationsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,6 +95,30 @@ export default function Planner() {
         queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId, { month: currentMonth }) });
         setSelectedItem(null);
       },
+    },
+  });
+
+  const { data: integrations } = useGetIntegrations(
+    workspaceId,
+    { query: { enabled: !!workspaceId, queryKey: getGetIntegrationsQueryKey(workspaceId) } }
+  );
+
+  const hlIntegration = integrations?.find((i) => i.provider === "highlevel" && i.status === "connected");
+
+  const [syncingSocial, setSyncingSocial] = useState(false);
+  const [socialSyncMsg, setSocialSyncMsg] = useState<string | null>(null);
+
+  const hlSyncMutation = useSyncIntegration({
+    mutation: {
+      onSuccess: (data: Record<string, unknown>) => {
+        queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId, { month: currentMonth }) });
+        queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
+        const msg = (data as { message?: string }).message ?? "Sync complete";
+        setSocialSyncMsg(msg);
+        setSyncingSocial(false);
+        setTimeout(() => setSocialSyncMsg(null), 6000);
+      },
+      onError: () => setSyncingSocial(false),
     },
   });
 
@@ -254,14 +281,39 @@ export default function Planner() {
             </div>
           ) : (
             <div className="space-y-6 pb-6">
+              {/* Social sync result message */}
+              {socialSyncMsg && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                  <span>{socialSyncMsg}</span>
+                </div>
+              )}
               {LANE_GROUPS.filter(g => !filterLane || g.key === filterLane).map((group) => (
                 <div key={group.key}>
                   <div className={`flex items-center gap-2 px-3 py-1.5 rounded-t-md ${group.lightColor} border-b-2 ${group.color.replace("bg-", "border-")}`}>
                     <div className={`w-3 h-3 rounded-full ${group.color}`} />
                     <h3 className={`text-sm font-semibold ${group.textColor}`}>{group.label}</h3>
-                    <span className="text-xs text-muted-foreground ml-auto">
+                    <span className={`text-xs text-muted-foreground ${group.key === "social" && hlIntegration ? "ml-1" : "ml-auto"}`}>
                       {filteredItems.filter(i => i.laneGroup === group.key).length} items
                     </span>
+                    {group.key === "social" && hlIntegration && (
+                      <button
+                        className="ml-auto flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50 transition-colors"
+                        disabled={syncingSocial}
+                        onClick={() => {
+                          setSyncingSocial(true);
+                          setSocialSyncMsg(null);
+                          hlSyncMutation.mutate({ workspaceId, id: hlIntegration.id });
+                        }}
+                        title="Pull latest social posts from HighLevel Social Planner"
+                      >
+                        {syncingSocial
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <RefreshCw className="h-3 w-3" />
+                        }
+                        Sync from HighLevel
+                      </button>
+                    )}
                   </div>
                   <div className="overflow-x-auto">
                     <div className="flex gap-4 p-3 min-w-max">
@@ -443,6 +495,12 @@ export default function Planner() {
                     );
                   })()}
                   <span className="text-xs text-muted-foreground">{selectedItem.laneName}</span>
+                  {selectedItem.externalSource === "highlevel" && (
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#002b78] text-white font-medium">
+                      <ExternalLink className="h-2.5 w-2.5" />
+                      HighLevel
+                    </span>
+                  )}
                 </div>
               </SheetHeader>
 
@@ -753,13 +811,21 @@ export default function Planner() {
 
 function PlannerCard({ item, onClick }: { item: PlannerItem; onClick: () => void }) {
   const statusColor = STATUS_BADGE_COLORS[item.status] || "bg-gray-100 text-gray-700";
-  const priorityColor = PRIORITY_COLORS[item.priority] || "text-gray-500";
+  const isFromHL = item.externalSource === "highlevel";
 
   return (
     <button
       onClick={onClick}
       className="w-full text-left bg-white border rounded-md p-2.5 hover:shadow-sm transition-shadow text-xs group"
     >
+      {isFromHL && (
+        <div className="flex items-center gap-1 mb-1.5">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-[#002b78] text-white text-[9px] font-bold tracking-wide">
+            HL
+          </span>
+          <span className="text-[9px] text-muted-foreground">HighLevel</span>
+        </div>
+      )}
       <p className="font-medium text-foreground line-clamp-2 mb-1.5 leading-tight">{item.title}</p>
       <div className="flex items-center gap-1.5 flex-wrap">
         <span className={`px-1.5 py-0.5 rounded-sm font-medium text-[10px] ${statusColor}`}>{item.status}</span>

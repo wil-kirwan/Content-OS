@@ -10,7 +10,7 @@ import {
   getGetIntegrationsQueryKey,
   getGetPlannerItemsQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +19,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Plus, Shield, Eye, EyeOff,
-  Loader2, Trash2, RotateCw, Link2, ArrowDownToLine, X
+  Loader2, Trash2, RotateCw, Link2, ArrowDownToLine, X, Users
 } from "lucide-react";
 import { format } from "date-fns";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   connected: { label: "Connected", color: "text-green-600", icon: CheckCircle2 },
@@ -31,8 +33,39 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   sync_delayed: { label: "Sync Delayed", color: "text-amber-600", icon: Clock },
 };
 
+const PLATFORM_COLORS: Record<string, string> = {
+  facebook: "bg-blue-600",
+  instagram: "bg-gradient-to-br from-purple-500 to-pink-500",
+  instagram_story: "bg-gradient-to-br from-purple-500 to-pink-500",
+  tiktok: "bg-black",
+  youtube: "bg-red-600",
+  youtube_shorts: "bg-red-600",
+  linkedin: "bg-blue-700",
+  twitter: "bg-sky-500",
+  x: "bg-black",
+  gmb: "bg-green-600",
+  google_my_business: "bg-green-600",
+  podcast: "bg-purple-600",
+};
+
+const PLATFORM_LABELS: Record<string, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  instagram_story: "Instagram Stories",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  youtube_shorts: "YouTube Shorts",
+  linkedin: "LinkedIn",
+  twitter: "Twitter / X",
+  x: "Twitter / X",
+  gmb: "Google My Business",
+  google_my_business: "Google My Business",
+  podcast: "Podcast",
+};
+
 interface SyncResult {
   success: boolean;
+  accountsSynced: number;
   itemsCreated: number;
   itemsUpdated: number;
   itemsSynced: number;
@@ -40,6 +73,29 @@ interface SyncResult {
   platformBreakdown: Record<string, number>;
   message: string;
   errors: string[];
+}
+
+interface SocialAccount {
+  id: number;
+  integrationId: number;
+  accountId: string;
+  platform: string;
+  name: string;
+  username: string | null;
+  avatar: string | null;
+  accountType: string | null;
+  status: string;
+  lastSyncedAt: string | null;
+}
+
+function PlatformInitial({ platform }: { platform: string }) {
+  const color = PLATFORM_COLORS[platform] ?? "bg-gray-500";
+  const label = PLATFORM_LABELS[platform] ?? platform;
+  return (
+    <div className={`w-9 h-9 rounded-full ${color} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+      {label.slice(0, 2).toUpperCase()}
+    </div>
+  );
 }
 
 export default function Integrations() {
@@ -58,6 +114,19 @@ export default function Integrations() {
     workspaceId,
     { query: { enabled: !!workspaceId, queryKey: getGetIntegrationsQueryKey(workspaceId) } }
   );
+
+  const firstIntegration = integrations?.[0];
+
+  // Load social accounts stored for the first (only) integration
+  const { data: socialAccounts, refetch: refetchAccounts } = useQuery<SocialAccount[]>({
+    queryKey: ["social-accounts", workspaceId, firstIntegration?.id],
+    enabled: !!firstIntegration?.id,
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${firstIntegration!.id}/accounts`);
+      if (!res.ok) throw new Error("Failed to load accounts");
+      return res.json();
+    },
+  });
 
   const createMutation = useCreateIntegration({
     mutation: {
@@ -98,9 +167,10 @@ export default function Integrations() {
 
   const syncMutation = useSyncIntegration({
     mutation: {
-      onSuccess: (data, variables) => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
         queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
+        refetchAccounts();
         setSyncResult(data as SyncResult);
         setSyncingId(null);
       },
@@ -157,27 +227,31 @@ export default function Integrations() {
                 <p className={`font-semibold text-sm ${syncResult.success ? "text-green-800" : "text-orange-800"}`}>
                   {syncResult.message}
                 </p>
-                {syncResult.itemsSynced > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {syncResult.accountsSynced > 0 && (
                     <Badge variant="outline" className="text-xs bg-white">
-                      {syncResult.itemsCreated} new posts added
+                      {syncResult.accountsSynced} social accounts found
                     </Badge>
-                    <Badge variant="outline" className="text-xs bg-white">
-                      {syncResult.itemsUpdated} posts updated
-                    </Badge>
-                    {Object.entries(syncResult.platformBreakdown).map(([lane, count]) => (
-                      <Badge key={lane} variant="outline" className="text-xs bg-white">
-                        {lane}: {count}
+                  )}
+                  {syncResult.itemsSynced > 0 && (
+                    <>
+                      <Badge variant="outline" className="text-xs bg-white">
+                        {syncResult.itemsCreated} new posts added
                       </Badge>
-                    ))}
-                  </div>
-                )}
+                      <Badge variant="outline" className="text-xs bg-white">
+                        {syncResult.itemsUpdated} posts updated
+                      </Badge>
+                      {Object.entries(syncResult.platformBreakdown).map(([lane, count]) => (
+                        <Badge key={lane} variant="outline" className="text-xs bg-white">
+                          {lane}: {count}
+                        </Badge>
+                      ))}
+                    </>
+                  )}
+                </div>
                 {syncResult.errors.length > 0 && (
                   <p className="mt-1 text-xs text-orange-700">{syncResult.errors[0]}</p>
                 )}
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Posts have been added to the Social section of your Master Planner.
-                </p>
               </div>
             </div>
             <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
@@ -305,6 +379,62 @@ export default function Integrations() {
               </Card>
             );
           })}
+
+          {/* Connected Social Accounts */}
+          {socialAccounts && socialAccounts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Connected Social Accounts ({socialAccounts.length})
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {socialAccounts.map((acct) => (
+                  <div
+                    key={acct.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                  >
+                    {acct.avatar ? (
+                      <img
+                        src={acct.avatar}
+                        alt={acct.name}
+                        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <PlatformInitial platform={acct.platform} />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{acct.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                          {PLATFORM_LABELS[acct.platform] ?? acct.platform}
+                        </Badge>
+                        {acct.username && (
+                          <span className="text-xs text-muted-foreground truncate">@{acct.username}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-green-500" title="Active" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state for accounts after sync has run */}
+          {socialAccounts && socialAccounts.length === 0 && firstIntegration?.lastSyncedAt && (
+            <div className="rounded-lg border border-dashed p-6 text-center">
+              <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm font-medium text-muted-foreground">No social accounts found</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Make sure your HighLevel Private Integration Token has the <strong>socialplanner/account.readonly</strong> scope enabled.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

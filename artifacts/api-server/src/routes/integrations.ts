@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, inArray } from "drizzle-orm";
-import { db, integrationsTable, plannerItemsTable, activityLogTable } from "@workspace/db";
+import { db, integrationsTable, plannerItemsTable, activityLogTable, socialAccountsTable } from "@workspace/db";
 import {
   GetIntegrationsParams,
   CreateIntegrationParams,
@@ -47,6 +47,22 @@ const HL_STATUS_TO_PLANNER: Record<string, string> = {
   pending: "planned",
 };
 
+// Platform name normalisation for display
+const PLATFORM_DISPLAY: Record<string, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  instagram_story: "Instagram Stories",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  youtube_shorts: "YouTube Shorts",
+  linkedin: "LinkedIn",
+  twitter: "Twitter / X",
+  x: "Twitter / X",
+  gmb: "Google My Business",
+  google_my_business: "Google My Business",
+  podcast: "Podcast",
+};
+
 interface HLPost {
   _id: string;
   status?: string;
@@ -66,6 +82,22 @@ interface HLPost {
   updatedAt?: string;
 }
 
+interface HLAccount {
+  _id?: string;
+  id?: string;
+  accountId?: string;
+  name?: string;
+  displayName?: string;
+  type?: string;
+  platform?: string;
+  username?: string;
+  avatar?: string;
+  picture?: string;
+  profilePicture?: string;
+  accountType?: string;
+  status?: string;
+}
+
 function extractPlatforms(post: HLPost): string[] {
   if (post.platform) return [post.platform.toLowerCase()];
   if (post.channels && post.channels.length > 0) return post.channels.map((c) => c.toLowerCase());
@@ -83,7 +115,84 @@ function extractScheduledDate(post: HLPost): string | null {
   return dateStr.split("T")[0];
 }
 
-async function fetchAllHLPosts(token: string, locationId: string): Promise<HLPost[]> {
+// Fetch and parse HighLevel social accounts for a location
+async function fetchHLAccounts(token: string, locationId: string): Promise<{ accountId: string; platform: string; name: string; username?: string; avatar?: string; accountType?: string }[]> {
+  const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Version: "2021-07-28",
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HighLevel Accounts API returned ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json() as {
+    success?: boolean;
+    results?: Record<string, HLAccount[]> | HLAccount[] | { accounts?: HLAccount[] };
+    accounts?: HLAccount[];
+    data?: HLAccount[];
+  };
+
+  const accounts: { accountId: string; platform: string; name: string; username?: string; avatar?: string; accountType?: string }[] = [];
+
+  // Results can be an object keyed by platform (e.g. { facebook: [...], instagram: [...] })
+  // OR a flat array, OR { accounts: [...] }
+  const results = data.results ?? data.accounts ?? data.data;
+
+  if (results && !Array.isArray(results) && typeof results === "object" && !("accounts" in results)) {
+    // Keyed by platform
+    for (const [platform, platformAccounts] of Object.entries(results as Record<string, HLAccount[]>)) {
+      if (!Array.isArray(platformAccounts)) continue;
+      for (const acct of platformAccounts) {
+        const id = acct._id || acct.id || acct.accountId;
+        if (!id) continue;
+        accounts.push({
+          accountId: id,
+          platform: platform.toLowerCase(),
+          name: acct.name || acct.displayName || platform,
+          username: acct.username,
+          avatar: acct.avatar || acct.picture || acct.profilePicture,
+          accountType: acct.accountType || acct.type,
+        });
+      }
+    }
+  } else if (Array.isArray(results)) {
+    for (const acct of results as HLAccount[]) {
+      const id = acct._id || acct.id || acct.accountId;
+      if (!id) continue;
+      accounts.push({
+        accountId: id,
+        platform: (acct.platform || acct.type || "unknown").toLowerCase(),
+        name: acct.name || acct.displayName || "Account",
+        username: acct.username,
+        avatar: acct.avatar || acct.picture || acct.profilePicture,
+        accountType: acct.accountType || acct.type,
+      });
+    }
+  } else if (results && typeof results === "object" && "accounts" in results) {
+    const inner = (results as { accounts?: HLAccount[] }).accounts ?? [];
+    for (const acct of inner) {
+      const id = acct._id || acct.id || acct.accountId;
+      if (!id) continue;
+      accounts.push({
+        accountId: id,
+        platform: (acct.platform || acct.type || "unknown").toLowerCase(),
+        name: acct.name || acct.displayName || "Account",
+        username: acct.username,
+        avatar: acct.avatar || acct.picture || acct.profilePicture,
+        accountType: acct.accountType || acct.type,
+      });
+    }
+  }
+
+  return accounts;
+}
+
+async function fetchAllHLPosts(token: string, locationId: string, accountIds: string[]): Promise<HLPost[]> {
   const allPosts: HLPost[] = [];
   const limit = 50;
   let skip = 0;
@@ -91,6 +200,10 @@ async function fetchAllHLPosts(token: string, locationId: string): Promise<HLPos
 
   while (hasMore) {
     const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/posts/list?limit=${limit}&skip=${skip}`;
+    const body: Record<string, unknown> = { type: "all" };
+    if (accountIds.length > 0) {
+      body.accountIds = accountIds;
+    }
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -98,9 +211,7 @@ async function fetchAllHLPosts(token: string, locationId: string): Promise<HLPos
         Version: "2021-07-28",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        type: "all",
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -271,6 +382,22 @@ router.post("/workspaces/:workspaceId/integrations/:id/validate", async (req, re
   res.json({ valid, status, message, scopes });
 });
 
+// GET social accounts stored for an integration
+router.get("/workspaces/:workspaceId/integrations/:id/accounts", async (req, res): Promise<void> => {
+  const workspaceId = parseInt(req.params.workspaceId, 10);
+  const integrationId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId) || isNaN(integrationId)) {
+    res.status(400).json({ error: "Invalid params" });
+    return;
+  }
+  const accounts = await db.select().from(socialAccountsTable)
+    .where(and(
+      eq(socialAccountsTable.workspaceId, workspaceId),
+      eq(socialAccountsTable.integrationId, integrationId),
+    ));
+  res.json(accounts.map(formatAccount));
+});
+
 router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): Promise<void> => {
   const params = SyncIntegrationParams.safeParse(req.params);
   if (!params.success) {
@@ -287,24 +414,75 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
   let itemsCreated = 0;
   let itemsUpdated = 0;
   let itemsFailed = 0;
+  let accountsSynced = 0;
   const errors: string[] = [];
   const platformBreakdown: Record<string, number> = {};
 
   if (integration.encryptedToken && integration.locationId && integration.status === "connected") {
     try {
-      // 1. Fetch all social posts from HighLevel
-      const hlPosts = await fetchAllHLPosts(integration.encryptedToken, integration.locationId);
+      // Step 1: Fetch and store social accounts from HighLevel
+      let accountIds: string[] = [];
+      try {
+        const hlAccounts = await fetchHLAccounts(integration.encryptedToken, integration.locationId);
 
-      // 2. Expand each post into one record per platform
+        // Upsert each account into the DB
+        for (const acct of hlAccounts) {
+          const existing = await db.select().from(socialAccountsTable)
+            .where(and(
+              eq(socialAccountsTable.integrationId, integration.id),
+              eq(socialAccountsTable.accountId, acct.accountId),
+            ))
+            .limit(1);
+
+          if (existing.length > 0) {
+            await db.update(socialAccountsTable).set({
+              name: acct.name,
+              username: acct.username ?? existing[0].username,
+              avatar: acct.avatar ?? existing[0].avatar,
+              accountType: acct.accountType ?? existing[0].accountType,
+              platform: acct.platform,
+              status: "active",
+              lastSyncedAt: new Date(),
+              updatedAt: new Date(),
+            }).where(eq(socialAccountsTable.id, existing[0].id));
+          } else {
+            await db.insert(socialAccountsTable).values({
+              workspaceId: params.data.workspaceId,
+              integrationId: integration.id,
+              accountId: acct.accountId,
+              platform: acct.platform,
+              name: acct.name,
+              username: acct.username,
+              avatar: acct.avatar,
+              accountType: acct.accountType,
+              status: "active",
+              lastSyncedAt: new Date(),
+            });
+          }
+          accountIds.push(acct.accountId);
+          accountsSynced++;
+        }
+      } catch (acctErr) {
+        // Accounts fetch failed — fall back to existing stored accounts
+        const stored = await db.select().from(socialAccountsTable)
+          .where(and(
+            eq(socialAccountsTable.workspaceId, params.data.workspaceId),
+            eq(socialAccountsTable.integrationId, integration.id),
+          ));
+        accountIds = stored.map((a) => a.accountId);
+        errors.push(`Accounts fetch warning: ${acctErr instanceof Error ? acctErr.message : String(acctErr)}`);
+      }
+
+      // Step 2: Fetch all social posts from HighLevel (using accountIds)
+      const hlPosts = await fetchAllHLPosts(integration.encryptedToken, integration.locationId, accountIds);
+
+      // Step 3: Expand each post into one record per platform
       type PostPlatformPair = { post: HLPost; platform: string; laneName: string };
       const pairs: PostPlatformPair[] = [];
 
       for (const post of hlPosts) {
         const platforms = extractPlatforms(post);
-        if (platforms.length === 0) {
-          // No platform data — skip silently
-          continue;
-        }
+        if (platforms.length === 0) continue;
         for (const platform of platforms) {
           const laneName = HL_PLATFORM_TO_LANE[platform];
           if (laneName) {
@@ -313,7 +491,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
         }
       }
 
-      // 3. Find which external IDs already exist in the DB
+      // Step 4: Find which external IDs already exist in the DB
       const externalIds = pairs.map(({ post, platform }) => `${post._id}::${platform}`);
 
       const existingItems = externalIds.length > 0
@@ -328,13 +506,12 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
 
       const existingMap = new Map(existingItems.map((i) => [i.externalObjectId, i]));
 
-      // 4. Upsert each pair
+      // Step 5: Upsert each pair
       for (const { post, platform, laneName } of pairs) {
         const externalId = `${post._id}::${platform}`;
         const content = extractContent(post);
         const plannedDate = extractScheduledDate(post);
         const plannerStatus = HL_STATUS_TO_PLANNER[post.status ?? ""] || "planned";
-        // Title = first 100 chars of content, or fallback
         const title = content.slice(0, 100) || `${laneName} post`;
 
         try {
@@ -378,14 +555,14 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
         }
       }
 
-      // 5. Log the sync
-      if (itemsCreated + itemsUpdated > 0) {
+      // Step 6: Log the sync
+      if (itemsCreated + itemsUpdated > 0 || accountsSynced > 0) {
         await db.insert(activityLogTable).values({
           workspaceId: params.data.workspaceId,
           action: "synced_from_highlevel",
           entityType: "social_posts",
           entityId: 0,
-          entityTitle: `HighLevel Social Sync — ${itemsCreated} new, ${itemsUpdated} updated`,
+          entityTitle: `HighLevel Social Sync — ${accountsSynced} accounts, ${itemsCreated} new posts, ${itemsUpdated} updated`,
           status: errors.length === 0 ? "success" : "warning",
         });
       }
@@ -404,18 +581,22 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
   }).where(eq(integrationsTable.id, params.data.id));
 
   const totalSynced = itemsCreated + itemsUpdated;
+  const postErrors = errors.filter((e) => !e.startsWith("Accounts fetch warning"));
   res.json({
-    success: errors.length === 0,
+    success: postErrors.length === 0,
+    accountsSynced,
     itemsCreated,
     itemsUpdated,
     itemsSynced: totalSynced,
     itemsFailed,
     platformBreakdown,
-    message: errors.length === 0
+    message: postErrors.length === 0
       ? totalSynced > 0
-        ? `Synced ${totalSynced} social posts (${itemsCreated} new, ${itemsUpdated} updated)`
-        : "No posts found in HighLevel Social Planner"
-      : errors[0],
+        ? `Synced ${totalSynced} social posts (${itemsCreated} new, ${itemsUpdated} updated) across ${accountsSynced} accounts`
+        : accountsSynced > 0
+          ? `Found ${accountsSynced} connected social accounts — no posts returned`
+          : "No accounts or posts found in HighLevel Social Planner"
+      : postErrors[0],
     errors,
   });
 });
@@ -435,6 +616,24 @@ function formatIntegration(i: typeof integrationsTable.$inferSelect) {
     tokenRotationDueAt: i.tokenRotationDueAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
+  };
+}
+
+function formatAccount(a: typeof socialAccountsTable.$inferSelect) {
+  return {
+    id: a.id,
+    workspaceId: a.workspaceId,
+    integrationId: a.integrationId,
+    accountId: a.accountId,
+    platform: a.platform,
+    name: a.name,
+    username: a.username ?? null,
+    avatar: a.avatar ?? null,
+    accountType: a.accountType ?? null,
+    status: a.status,
+    lastSyncedAt: a.lastSyncedAt?.toISOString() ?? null,
+    createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
   };
 }
 

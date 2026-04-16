@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 function getMonthRange(date: Date): { fromDate: string; toDate: string } {
   const from = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);

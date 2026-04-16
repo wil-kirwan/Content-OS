@@ -31,7 +31,7 @@ import { format, parse, addMonths, subMonths, getDaysInMonth, startOfMonth, getD
 import { LANE_GROUPS, STATUS_BADGE_COLORS, APPROVAL_BADGE_COLORS, SYNC_STATUS_COLORS, PRIORITY_COLORS } from "@/lib/planner-constants";
 import type { PlannerItem } from "@workspace/api-client-react";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
 function getMonthRange(date: Date): { fromDate: string; toDate: string } {
   const from = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);

@@ -301,10 +301,22 @@ export default function Integrations() {
 
   const validateMutation = useValidateIntegration({
     mutation: {
-      onSuccess: (_, vars) => {
+      onSuccess: async (_, vars) => {
         queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
-        // Always refresh accounts after validation — uses vars.id to avoid stale closure
-        refreshAccountsMutation.mutate(vars.id);
+        // Use fetch directly — calling refreshAccountsMutation.mutate() inside onSuccess
+        // is unreliable due to stale closure in TanStack Query v5.
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/workspaces/${workspaceId}/integrations/${vars.id}/refresh-accounts`,
+            { method: "POST" }
+          );
+          if (res.ok) {
+            const data = await res.json() as { success: boolean; accounts: SocialAccount[] };
+            queryClient.setQueryData(["social-accounts", workspaceId, vars.id], data.accounts);
+          }
+        } catch {
+          // Accounts remain from cache; user can hit Refresh manually
+        }
       },
     },
   });
@@ -321,8 +333,8 @@ export default function Integrations() {
     onSuccess: (data, { integrationId }) => {
       queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
       queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
-      // Refresh accounts too — new accounts may have appeared since last sync
-      refreshAccountsMutation.mutate(integrationId);
+      // Invalidate accounts cache — sync endpoint already updates accounts in DB
+      queryClient.invalidateQueries({ queryKey: ["social-accounts", workspaceId, integrationId] });
       setSyncResult(data);
       setSyncingId(null);
     },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   useGetIntegrations,
@@ -53,6 +53,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   google_my_business: "bg-green-600",
   google: "bg-green-600",
   podcast: "bg-purple-600",
+  community: "bg-orange-500",
 };
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -69,6 +70,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   google_my_business: "Google My Business",
   google: "Google My Business",
   podcast: "Podcast",
+  community: "Community",
 };
 
 interface SyncResult {
@@ -194,6 +196,36 @@ export default function Integrations() {
       setSyncingId(null);
     },
   });
+
+  const refreshAccountsMutation = useMutation({
+    mutationFn: async (integrationId: number) => {
+      const res = await fetch(
+        `${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/refresh-accounts`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error("Failed to refresh accounts");
+      return res.json() as Promise<{ success: boolean; accounts: SocialAccount[] }>;
+    },
+    onSuccess: () => {
+      refetchAccounts();
+    },
+  });
+
+  // Auto-refresh accounts from HL when the integration is connected but no accounts are stored yet
+  const hasAutoRefreshed = useRef(false);
+  useEffect(() => {
+    if (
+      firstIntegration?.id &&
+      firstIntegration.status === "connected" &&
+      socialAccounts !== undefined &&
+      socialAccounts.length === 0 &&
+      !hasAutoRefreshed.current &&
+      !refreshAccountsMutation.isPending
+    ) {
+      hasAutoRefreshed.current = true;
+      refreshAccountsMutation.mutate(firstIntegration.id);
+    }
+  }, [firstIntegration, socialAccounts]);
 
   const handleConnect = () => {
     if (!token || !locationId) return;
@@ -389,15 +421,40 @@ export default function Integrations() {
             );
           })}
 
-          {/* Connected Social Accounts */}
-          {socialAccounts && socialAccounts.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
+          {/* Connected Social Accounts — always visible when integration exists */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                  Connected Social Accounts ({socialAccounts.length})
+                  Connected Social Accounts
+                  {socialAccounts && socialAccounts.length > 0 && (
+                    <span className="ml-1.5 font-normal">({socialAccounts.length})</span>
+                  )}
                 </h2>
               </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => firstIntegration && refreshAccountsMutation.mutate(firstIntegration.id)}
+                disabled={refreshAccountsMutation.isPending}
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${refreshAccountsMutation.isPending ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+
+            {/* Loading state */}
+            {refreshAccountsMutation.isPending && (!socialAccounts || socialAccounts.length === 0) && (
+              <div className="flex items-center justify-center py-10 rounded-lg border">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
+                <span className="text-sm text-muted-foreground">Fetching connected accounts from HighLevel…</span>
+              </div>
+            )}
+
+            {/* Account cards */}
+            {socialAccounts && socialAccounts.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {socialAccounts.map((acct) => {
                   const syncInfo = syncResult?.accountBreakdown?.[acct.accountId];
@@ -439,19 +496,27 @@ export default function Integrations() {
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Empty state for accounts after sync has run */}
-          {socialAccounts && socialAccounts.length === 0 && firstIntegration?.lastSyncedAt && (
-            <div className="rounded-lg border border-dashed p-6 text-center">
-              <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm font-medium text-muted-foreground">No social accounts found</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Make sure your HighLevel Private Integration Token has the <strong>socialplanner/account.readonly</strong> scope enabled.
-              </p>
-            </div>
-          )}
+            {/* Empty state — accounts fetched but none found */}
+            {!refreshAccountsMutation.isPending && socialAccounts && socialAccounts.length === 0 && (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm font-medium">No connected accounts found</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-3 max-w-sm mx-auto">
+                  Make sure your HighLevel token has the <strong>socialplanner/account.readonly</strong> scope, then click Refresh.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => firstIntegration && refreshAccountsMutation.mutate(firstIntegration.id)}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1.5" />
+                  Refresh from HighLevel
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

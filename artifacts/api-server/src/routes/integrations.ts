@@ -451,6 +451,78 @@ router.get("/workspaces/:workspaceId/integrations/:id/accounts", async (req, res
   res.json(accounts.map(formatAccount));
 });
 
+// POST refresh-accounts — fetch connected accounts from HL and store them (no post sync needed)
+router.post("/workspaces/:workspaceId/integrations/:id/refresh-accounts", async (req, res): Promise<void> => {
+  const workspaceId = parseInt(req.params.workspaceId, 10);
+  const integrationId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId) || isNaN(integrationId)) {
+    res.status(400).json({ error: "Invalid params" });
+    return;
+  }
+
+  const [integration] = await db.select().from(integrationsTable)
+    .where(and(eq(integrationsTable.workspaceId, workspaceId), eq(integrationsTable.id, integrationId)));
+
+  if (!integration) {
+    res.status(404).json({ error: "Integration not found" });
+    return;
+  }
+  if (!integration.encryptedToken || !integration.locationId || integration.status !== "connected") {
+    res.status(400).json({ error: "Integration is not connected or missing credentials" });
+    return;
+  }
+
+  try {
+    const hlAccounts = await fetchHLAccounts(integration.encryptedToken, integration.locationId);
+
+    for (const acct of hlAccounts) {
+      const existing = await db.select().from(socialAccountsTable)
+        .where(and(
+          eq(socialAccountsTable.integrationId, integrationId),
+          eq(socialAccountsTable.accountId, acct.accountId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db.update(socialAccountsTable).set({
+          name: acct.name,
+          username: acct.username ?? existing[0].username,
+          avatar: acct.avatar ?? existing[0].avatar,
+          accountType: acct.accountType ?? existing[0].accountType,
+          platform: acct.platform,
+          status: "active",
+          lastSyncedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(socialAccountsTable.id, existing[0].id));
+      } else {
+        await db.insert(socialAccountsTable).values({
+          workspaceId,
+          integrationId,
+          accountId: acct.accountId,
+          platform: acct.platform,
+          name: acct.name,
+          username: acct.username,
+          avatar: acct.avatar,
+          accountType: acct.accountType,
+          status: "active",
+          lastSyncedAt: new Date(),
+        });
+      }
+    }
+
+    // Return the freshly stored accounts
+    const stored = await db.select().from(socialAccountsTable)
+      .where(and(
+        eq(socialAccountsTable.workspaceId, workspaceId),
+        eq(socialAccountsTable.integrationId, integrationId),
+      ));
+    res.json({ success: true, accounts: stored.map(formatAccount) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Failed to fetch accounts: ${msg}` });
+  }
+});
+
 router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): Promise<void> => {
   const params = SyncIntegrationParams.safeParse(req.params);
   if (!params.success) {

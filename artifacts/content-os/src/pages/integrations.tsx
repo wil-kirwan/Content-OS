@@ -129,9 +129,15 @@ export default function Integrations() {
   const firstIntegration = integrations?.[0];
 
   // Load social accounts stored for the first (only) integration
-  const { data: socialAccounts, refetch: refetchAccounts } = useQuery<SocialAccount[]>({
+  const {
+    data: socialAccounts,
+    refetch: refetchAccounts,
+    isLoading: isAccountsLoading,
+    isError: isAccountsError,
+  } = useQuery<SocialAccount[]>({
     queryKey: ["social-accounts", workspaceId, firstIntegration?.id],
     enabled: !!firstIntegration?.id,
+    staleTime: 0,
     queryFn: async () => {
       const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${firstIntegration!.id}/accounts`);
       if (!res.ok) throw new Error("Failed to load accounts");
@@ -221,21 +227,21 @@ export default function Integrations() {
   });
 
   // Auto-fetch accounts from HL when integration is connected but no accounts are stored yet.
-  // Watches firstIntegration.id and socialAccounts.length so it re-triggers after reconnect.
-  // No one-shot guard — once accounts are populated (length > 0) the condition becomes false.
   useEffect(() => {
     if (
       firstIntegration?.id &&
       firstIntegration.status === "connected" &&
+      !isAccountsLoading &&
+      !isAccountsError &&
       socialAccounts !== undefined &&
       socialAccounts.length === 0 &&
-      !refreshAccountsMutation.isPending
+      !refreshAccountsMutation.isPending &&
+      !refreshAccountsMutation.isError
     ) {
       refreshAccountsMutation.mutate(firstIntegration.id);
     }
-    // Depend only on the scalar values that matter — avoids re-running on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstIntegration?.id, firstIntegration?.status, socialAccounts?.length]);
+  }, [firstIntegration?.id, firstIntegration?.status, isAccountsLoading, isAccountsError, socialAccounts?.length, refreshAccountsMutation.isError]);
 
   const handleConnect = () => {
     if (!token || !locationId) return;
@@ -455,16 +461,16 @@ export default function Integrations() {
               </Button>
             </div>
 
-            {/* Loading state */}
-            {refreshAccountsMutation.isPending && (!socialAccounts || socialAccounts.length === 0) && (
+            {/* Loading — initial accounts load OR refresh in progress with no data yet */}
+            {(isAccountsLoading || (refreshAccountsMutation.isPending && !socialAccounts?.length)) && (
               <div className="flex items-center justify-center py-10 rounded-lg border">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
                 <span className="text-sm text-muted-foreground">Fetching connected accounts from HighLevel…</span>
               </div>
             )}
 
-            {/* Account cards */}
-            {socialAccounts && socialAccounts.length > 0 && (
+            {/* Account cards — shown whenever data is present, even while a background refresh runs */}
+            {!isAccountsLoading && socialAccounts && socialAccounts.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {socialAccounts.map((acct) => {
                   const syncInfo = syncResult?.accountBreakdown?.[acct.accountId];
@@ -508,8 +514,9 @@ export default function Integrations() {
               </div>
             )}
 
-            {/* Empty state — accounts fetched but none found */}
-            {!refreshAccountsMutation.isPending && socialAccounts && socialAccounts.length === 0 && (
+            {/* Empty state — query resolved but no accounts found */}
+            {!isAccountsLoading && !refreshAccountsMutation.isPending && !isAccountsError &&
+              (socialAccounts === undefined || socialAccounts.length === 0) && (
               <div className="rounded-lg border border-dashed p-8 text-center">
                 <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm font-medium">No connected accounts found</p>
@@ -523,6 +530,25 @@ export default function Integrations() {
                 >
                   <RefreshCw className="h-3 w-3 mr-1.5" />
                   Refresh from HighLevel
+                </Button>
+              </div>
+            )}
+
+            {/* Error state — accounts query failed */}
+            {isAccountsError && !refreshAccountsMutation.isPending && (
+              <div className="rounded-lg border border-dashed border-destructive/40 p-8 text-center">
+                <XCircle className="h-8 w-8 mx-auto text-destructive mb-2" />
+                <p className="text-sm font-medium">Could not load accounts</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-3">
+                  There was an error fetching your connected accounts.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => firstIntegration && refreshAccountsMutation.mutate(firstIntegration.id)}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1.5" />
+                  Retry
                 </Button>
               </div>
             )}

@@ -6,11 +6,11 @@ import {
   useUpdateIntegration,
   useDeleteIntegration,
   useValidateIntegration,
-  useSyncIntegration,
   getGetIntegrationsQueryKey,
   getGetPlannerItemsQueryKey,
 } from "@workspace/api-client-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,12 @@ import {
 import { format } from "date-fns";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+
+function getMonthRange(date: Date): { fromDate: string; toDate: string } {
+  const from = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+  const to = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { fromDate: from.toISOString(), toDate: to.toISOString() };
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
   connected: { label: "Connected", color: "text-green-600", icon: CheckCircle2 },
@@ -165,18 +171,24 @@ export default function Integrations() {
     },
   });
 
-  const syncMutation = useSyncIntegration({
-    mutation: {
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
-        queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
-        refetchAccounts();
-        setSyncResult(data as SyncResult);
-        setSyncingId(null);
-      },
-      onError: () => {
-        setSyncingId(null);
-      },
+  const syncMutation = useMutation({
+    mutationFn: async ({ integrationId, fromDate, toDate }: { integrationId: number; fromDate: string; toDate: string }) => {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromDate, toDate }),
+      });
+      return res.json() as Promise<SyncResult>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
+      refetchAccounts();
+      setSyncResult(data);
+      setSyncingId(null);
+    },
+    onError: () => {
+      setSyncingId(null);
     },
   });
 
@@ -196,7 +208,8 @@ export default function Integrations() {
   const handleSync = (integrationId: number) => {
     setSyncingId(integrationId);
     setSyncResult(null);
-    syncMutation.mutate({ workspaceId, id: integrationId });
+    const { fromDate, toDate } = getMonthRange(new Date());
+    syncMutation.mutate({ integrationId, fromDate, toDate });
   };
 
   return (

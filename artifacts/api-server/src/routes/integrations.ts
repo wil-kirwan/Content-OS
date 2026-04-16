@@ -192,7 +192,15 @@ async function fetchHLAccounts(token: string, locationId: string): Promise<{ acc
   return accounts;
 }
 
-async function fetchAllHLPosts(token: string, locationId: string, accountIds: string[]): Promise<HLPost[]> {
+function getMonthDateRange(fromDate?: string, toDate?: string): { from: string; to: string } {
+  if (fromDate && toDate) return { from: fromDate, to: toDate };
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+async function fetchAllHLPosts(token: string, locationId: string, accountIds: string[], fromDate: string, toDate: string): Promise<HLPost[]> {
   const allPosts: HLPost[] = [];
   const limit = 50;
   let skip = 0;
@@ -204,6 +212,8 @@ async function fetchAllHLPosts(token: string, locationId: string, accountIds: st
       type: "all",
       limit: String(limit),
       skip: String(skip),
+      fromDate,
+      toDate,
     };
     if (accountIds.length > 0) {
       body.accounts = accountIds.join(", ");
@@ -422,6 +432,9 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
   const errors: string[] = [];
   const platformBreakdown: Record<string, number> = {};
 
+  const { fromDate: reqFromDate, toDate: reqToDate } = req.body as { fromDate?: string; toDate?: string };
+  const dateRange = getMonthDateRange(reqFromDate, reqToDate);
+
   if (integration.encryptedToken && integration.locationId && integration.status === "connected") {
     try {
       // Step 1: Fetch and store social accounts from HighLevel
@@ -477,8 +490,8 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
         errors.push(`Accounts fetch warning: ${acctErr instanceof Error ? acctErr.message : String(acctErr)}`);
       }
 
-      // Step 2: Fetch all social posts from HighLevel (using accountIds)
-      const hlPosts = await fetchAllHLPosts(integration.encryptedToken, integration.locationId, accountIds);
+      // Step 2: Fetch all social posts from HighLevel (using accountIds and date range)
+      const hlPosts = await fetchAllHLPosts(integration.encryptedToken, integration.locationId, accountIds, dateRange.from, dateRange.to);
 
       // Step 3: Expand each post into one record per platform
       type PostPlatformPair = { post: HLPost; platform: string; laneName: string };

@@ -7,12 +7,12 @@ import {
   useDeletePlannerItem,
   useGetCampaigns,
   useGetIntegrations,
-  useSyncIntegration,
   getGetPlannerItemsQueryKey,
   getGetCampaignsQueryKey,
   getGetIntegrationsQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,14 @@ import {
 import { format, parse, addMonths, subMonths, getDaysInMonth, startOfMonth, getDay } from "date-fns";
 import { LANE_GROUPS, STATUS_BADGE_COLORS, APPROVAL_BADGE_COLORS, SYNC_STATUS_COLORS, PRIORITY_COLORS } from "@/lib/planner-constants";
 import type { PlannerItem } from "@workspace/api-client-react";
+
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+
+function getMonthRange(date: Date): { fromDate: string; toDate: string } {
+  const from = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+  const to = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { fromDate: from.toISOString(), toDate: to.toISOString() };
+}
 
 const BLANK_FORM = {
   title: "",
@@ -108,18 +116,23 @@ export default function Planner() {
   const [syncingSocial, setSyncingSocial] = useState(false);
   const [socialSyncMsg, setSocialSyncMsg] = useState<string | null>(null);
 
-  const hlSyncMutation = useSyncIntegration({
-    mutation: {
-      onSuccess: (data: Record<string, unknown>) => {
-        queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId, { month: currentMonth }) });
-        queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
-        const msg = (data as { message?: string }).message ?? "Sync complete";
-        setSocialSyncMsg(msg);
-        setSyncingSocial(false);
-        setTimeout(() => setSocialSyncMsg(null), 6000);
-      },
-      onError: () => setSyncingSocial(false),
+  const hlSyncMutation = useMutation({
+    mutationFn: async ({ integrationId, fromDate, toDate }: { integrationId: number; fromDate: string; toDate: string }) => {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromDate, toDate }),
+      });
+      return res.json() as Promise<{ message?: string }>;
     },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId, { month: currentMonth }) });
+      queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
+      setSocialSyncMsg(data.message ?? "Sync complete");
+      setSyncingSocial(false);
+      setTimeout(() => setSocialSyncMsg(null), 6000);
+    },
+    onError: () => setSyncingSocial(false),
   });
 
   const filteredItems = useMemo(() => {
@@ -303,15 +316,16 @@ export default function Planner() {
                         onClick={() => {
                           setSyncingSocial(true);
                           setSocialSyncMsg(null);
-                          hlSyncMutation.mutate({ workspaceId, id: hlIntegration.id });
+                          const { fromDate, toDate } = getMonthRange(parsedMonth);
+                          hlSyncMutation.mutate({ integrationId: hlIntegration.id, fromDate, toDate });
                         }}
-                        title="Pull latest social posts from HighLevel Social Planner"
+                        title={`Pull social posts from HighLevel for ${format(parsedMonth, "MMMM yyyy")}`}
                       >
                         {syncingSocial
                           ? <Loader2 className="h-3 w-3 animate-spin" />
                           : <RefreshCw className="h-3 w-3" />
                         }
-                        Sync from HighLevel
+                        Sync {format(parsedMonth, "MMM yyyy")} from HighLevel
                       </button>
                     )}
                   </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   useGetIntegrations,
@@ -139,6 +139,25 @@ export default function Integrations() {
     },
   });
 
+  // refreshAccountsMutation defined first so validate/create can call it
+  const refreshAccountsMutation = useMutation({
+    mutationFn: async (integrationId: number) => {
+      const res = await fetch(
+        `${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/refresh-accounts`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error("Failed to refresh accounts");
+      return res.json() as Promise<{ success: boolean; accounts: SocialAccount[] }>;
+    },
+    onSuccess: (data, integrationId) => {
+      // Use integrationId from mutation variables — avoids stale closure
+      queryClient.setQueryData(
+        ["social-accounts", workspaceId, integrationId],
+        data.accounts
+      );
+    },
+  });
+
   const createMutation = useCreateIntegration({
     mutation: {
       onSuccess: () => {
@@ -146,6 +165,7 @@ export default function Integrations() {
         setShowConnect(false);
         setToken("");
         setLocationId("");
+        // accounts will auto-fetch via the useEffect once firstIntegration is set
       },
     },
   });
@@ -170,8 +190,10 @@ export default function Integrations() {
 
   const validateMutation = useValidateIntegration({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (_, vars) => {
         queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
+        // Always refresh accounts after validation — uses vars.id to avoid stale closure
+        refreshAccountsMutation.mutate(vars.id);
       },
     },
   });
@@ -185,10 +207,11 @@ export default function Integrations() {
       });
       return res.json() as Promise<SyncResult>;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, { integrationId }) => {
       queryClient.invalidateQueries({ queryKey: getGetIntegrationsQueryKey(workspaceId) });
       queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
-      refetchAccounts();
+      // Refresh accounts too — new accounts may have appeared since last sync
+      refreshAccountsMutation.mutate(integrationId);
       setSyncResult(data);
       setSyncingId(null);
     },
@@ -197,39 +220,22 @@ export default function Integrations() {
     },
   });
 
-  const refreshAccountsMutation = useMutation({
-    mutationFn: async (integrationId: number) => {
-      const res = await fetch(
-        `${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/refresh-accounts`,
-        { method: "POST" }
-      );
-      if (!res.ok) throw new Error("Failed to refresh accounts");
-      return res.json() as Promise<{ success: boolean; accounts: SocialAccount[] }>;
-    },
-    onSuccess: (data) => {
-      // Directly populate the cache with accounts already returned by the POST — no extra GET needed
-      queryClient.setQueryData(
-        ["social-accounts", workspaceId, firstIntegration?.id],
-        data.accounts
-      );
-    },
-  });
-
-  // Auto-refresh accounts from HL when the integration is connected but no accounts are stored yet
-  const hasAutoRefreshed = useRef(false);
+  // Auto-fetch accounts from HL when integration is connected but no accounts are stored yet.
+  // Watches firstIntegration.id and socialAccounts.length so it re-triggers after reconnect.
+  // No one-shot guard — once accounts are populated (length > 0) the condition becomes false.
   useEffect(() => {
     if (
       firstIntegration?.id &&
       firstIntegration.status === "connected" &&
       socialAccounts !== undefined &&
       socialAccounts.length === 0 &&
-      !hasAutoRefreshed.current &&
       !refreshAccountsMutation.isPending
     ) {
-      hasAutoRefreshed.current = true;
       refreshAccountsMutation.mutate(firstIntegration.id);
     }
-  }, [firstIntegration, socialAccounts]);
+    // Depend only on the scalar values that matter — avoids re-running on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstIntegration?.id, firstIntegration?.status, socialAccounts?.length]);
 
   const handleConnect = () => {
     if (!token || !locationId) return;

@@ -776,6 +776,177 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
   });
 });
 
+// ─── Blog Sync ─────────────────────────────────────────────────────────────
+
+interface HLBlog {
+  _id: string;
+  name: string;
+}
+
+interface HLBlogPost {
+  _id: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  publishedAt?: string | null;
+  scheduledAt?: string | null;
+  updatedAt?: string;
+  urlSlug?: string;
+  imageUrl?: string;
+  updatedBy?: string;
+  archived?: boolean;
+}
+
+async function fetchHLBlogs(token: string, locationId: string): Promise<HLBlog[]> {
+  const url = `https://services.leadconnectorhq.com/blogs/site/all?locationId=${encodeURIComponent(locationId)}&skip=0&limit=99`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`HL Blogs API ${res.status}: ${await res.text()}`);
+  const data = await res.json() as { data?: HLBlog[] };
+  return data.data ?? [];
+}
+
+async function fetchAllHLBlogPosts(
+  token: string,
+  locationId: string,
+  blogId: string,
+  status: "PUBLISHED" | "SCHEDULED",
+): Promise<HLBlogPost[]> {
+  const all: HLBlogPost[] = [];
+  const limit = 10;
+  let offset = 0;
+  for (;;) {
+    const url = `https://services.leadconnectorhq.com/blogs/posts/all?locationId=${encodeURIComponent(locationId)}&blogId=${encodeURIComponent(blogId)}&limit=${limit}&offset=${offset}&status=${status}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+    });
+    if (!res.ok) break;
+    const data = await res.json() as { blogs?: HLBlogPost[]; count?: number };
+    const posts = data.blogs ?? [];
+    all.push(...posts);
+    if (posts.length < limit) break;
+    offset += limit;
+  }
+  return all;
+}
+
+router.post("/workspaces/:workspaceId/integrations/:id/sync-blogs", async (req, res): Promise<void> => {
+  const workspaceId = parseInt(req.params.workspaceId, 10);
+  const integrationId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId) || isNaN(integrationId)) {
+    res.status(400).json({ error: "Invalid params" });
+    return;
+  }
+
+  const [integration] = await db.select().from(integrationsTable)
+    .where(and(eq(integrationsTable.workspaceId, workspaceId), eq(integrationsTable.id, integrationId)));
+
+  if (!integration) { res.status(404).json({ error: "Integration not found" }); return; }
+  if (!integration.encryptedToken || !integration.locationId || integration.status !== "connected") {
+    res.status(400).json({ error: "Integration is not connected or missing credentials" });
+    return;
+  }
+
+  let postsCreated = 0;
+  let postsUpdated = 0;
+  let postsFailed = 0;
+  const errors: string[] = [];
+
+  try {
+    const blogs = await fetchHLBlogs(integration.encryptedToken, integration.locationId);
+
+    for (const blog of blogs) {
+      // Fetch both published and scheduled posts for this blog
+      const [published, scheduled] = await Promise.all([
+        fetchAllHLBlogPosts(integration.encryptedToken, integration.locationId, blog._id, "PUBLISHED"),
+        fetchAllHLBlogPosts(integration.encryptedToken, integration.locationId, blog._id, "SCHEDULED"),
+      ]);
+
+      const allPosts: HLBlogPost[] = [...published, ...scheduled];
+
+      for (const post of allPosts) {
+        if (post.archived) continue;
+
+        const externalObjectId = `${post._id}::${blog._id}`;
+        const title = (post.title || post.urlSlug || "Blog Post").slice(0, 200);
+        const postStatus = (post.status ?? "").toUpperCase();
+        const plannerStatus = postStatus === "PUBLISHED" ? "published" : postStatus === "SCHEDULED" ? "scheduled" : "draft";
+
+        // Use publishedAt for published posts, scheduledAt for scheduled
+        const dateStr = post.publishedAt ?? post.scheduledAt ?? null;
+        const plannedDate = dateStr ? dateStr.split("T")[0] : null;
+
+        try {
+          const [existing] = await db.select({ id: plannerItemsTable.id })
+            .from(plannerItemsTable)
+            .where(and(
+              eq(plannerItemsTable.workspaceId, workspaceId),
+              eq(plannerItemsTable.externalSource, "highlevel_blog"),
+              eq(plannerItemsTable.externalObjectId, externalObjectId),
+            ))
+            .limit(1);
+
+          if (existing) {
+            await db.update(plannerItemsTable).set({
+              title,
+              description: post.description || null,
+              plannedDate,
+              status: plannerStatus,
+              syncStatus: "synced",
+              lastSyncAt: new Date(),
+              updatedAt: new Date(),
+            }).where(eq(plannerItemsTable.id, existing.id));
+            postsUpdated++;
+          } else {
+            await db.insert(plannerItemsTable).values({
+              workspaceId,
+              laneGroup: "site",
+              laneName: "Blog Post",
+              title,
+              description: post.description || null,
+              plannedDate,
+              status: plannerStatus,
+              approvalStatus: "pending",
+              priority: "medium",
+              assetLinks: [],
+              externalSource: "highlevel_blog",
+              externalObjectType: "blog_post",
+              externalObjectId,
+              syncStatus: "synced",
+              lastSyncAt: new Date(),
+            });
+            postsCreated++;
+          }
+        } catch (err) {
+          postsFailed++;
+          errors.push(`Post ${post._id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+
+    await db.update(integrationsTable).set({ lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(eq(integrationsTable.id, integrationId));
+
+    const total = postsCreated + postsUpdated;
+    res.json({
+      success: errors.length === 0,
+      blogsFound: blogs.length,
+      postsCreated,
+      postsUpdated,
+      postsFailed,
+      postsSynced: total,
+      message: total > 0
+        ? `Synced ${total} blog posts (${postsCreated} new, ${postsUpdated} updated) from ${blogs.length} blog${blogs.length !== 1 ? "s" : ""}`
+        : blogs.length > 0 ? "No blog posts found" : "No blogs found for this location",
+      errors,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Blog sync failed: ${msg}` });
+  }
+});
+
 function formatIntegration(i: typeof integrationsTable.$inferSelect) {
   return {
     id: i.id,

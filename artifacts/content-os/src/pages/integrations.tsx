@@ -73,6 +73,17 @@ const PLATFORM_LABELS: Record<string, string> = {
   community: "Community",
 };
 
+interface BlogSyncResult {
+  success: boolean;
+  blogsFound: number;
+  postsCreated: number;
+  postsUpdated: number;
+  postsFailed: number;
+  postsSynced: number;
+  message: string;
+  errors: string[];
+}
+
 interface SyncResult {
   success: boolean;
   accountsSynced: number;
@@ -225,6 +236,8 @@ export default function Integrations() {
   const [newToken, setNewToken] = useState("");
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+  const [blogSyncResult, setBlogSyncResult] = useState<BlogSyncResult | null>(null);
+  const [blogSyncingId, setBlogSyncingId] = useState<number | null>(null);
 
   const { data: integrations, isLoading } = useGetIntegrations(
     workspaceId,
@@ -343,6 +356,43 @@ export default function Integrations() {
     },
   });
 
+  const syncBlogsMutation = useMutation({
+    mutationFn: async (integrationId: number) => {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/sync-blogs`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Blog sync failed" }));
+        throw new Error((err as { error?: string }).error ?? "Blog sync failed");
+      }
+      return res.json() as Promise<BlogSyncResult>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
+      setBlogSyncResult(data);
+      setBlogSyncingId(null);
+    },
+    onError: (err) => {
+      setBlogSyncResult({
+        success: false,
+        blogsFound: 0,
+        postsCreated: 0,
+        postsUpdated: 0,
+        postsFailed: 0,
+        postsSynced: 0,
+        message: err instanceof Error ? err.message : "Blog sync failed",
+        errors: [],
+      });
+      setBlogSyncingId(null);
+    },
+  });
+
+  const handleSyncBlogs = (integrationId: number) => {
+    setBlogSyncingId(integrationId);
+    setBlogSyncResult(null);
+    syncBlogsMutation.mutate(integrationId);
+  };
+
   // Auto-fetch accounts from HL when integration is connected but no accounts are stored yet.
   useEffect(() => {
     if (
@@ -429,6 +479,45 @@ export default function Integrations() {
               </div>
             </div>
             <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {blogSyncResult && (
+        <div className={`rounded-lg border p-4 ${blogSyncResult.success ? "bg-indigo-50 border-indigo-200" : "bg-orange-50 border-orange-200"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              {blogSyncResult.success
+                ? <CheckCircle2 className="h-5 w-5 text-indigo-600 mt-0.5 flex-shrink-0" />
+                : <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+              }
+              <div>
+                <p className={`font-semibold text-sm ${blogSyncResult.success ? "text-indigo-800" : "text-orange-800"}`}>
+                  {blogSyncResult.message}
+                </p>
+                {blogSyncResult.postsSynced > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="text-xs bg-white gap-1">
+                      {blogSyncResult.postsCreated} new posts
+                    </Badge>
+                    {blogSyncResult.postsUpdated > 0 && (
+                      <Badge variant="outline" className="text-xs bg-white gap-1">
+                        {blogSyncResult.postsUpdated} updated
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-xs bg-white gap-1">
+                      {blogSyncResult.blogsFound} {blogSyncResult.blogsFound === 1 ? "blog" : "blogs"} scanned
+                    </Badge>
+                  </div>
+                )}
+                {blogSyncResult.errors.length > 0 && (
+                  <p className="mt-1 text-xs text-orange-700">{blogSyncResult.errors[0]}</p>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setBlogSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -529,6 +618,15 @@ export default function Integrations() {
                     >
                       {isSyncing ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <ArrowDownToLine className="h-3 w-3 mr-1.5" />}
                       Sync Social Posts
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSyncBlogs(integration.id)}
+                      disabled={blogSyncingId === integration.id || integration.status !== "connected"}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {blogSyncingId === integration.id ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <ArrowDownToLine className="h-3 w-3 mr-1.5" />}
+                      Sync Blog Posts
                     </Button>
                     <Button
                       size="sm"

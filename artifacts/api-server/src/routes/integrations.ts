@@ -30,6 +30,7 @@ const HL_PLATFORM_TO_LANE: Record<string, string> = {
   x: "Twitter / X",
   gmb: "Google My Business",
   google_my_business: "Google My Business",
+  google: "Google My Business",   // HL returns "google" for GMB posts
   podcast: "Podcast",
 };
 
@@ -60,26 +61,38 @@ const PLATFORM_DISPLAY: Record<string, string> = {
   x: "Twitter / X",
   gmb: "Google My Business",
   google_my_business: "Google My Business",
+  google: "Google My Business",
   podcast: "Podcast",
 };
 
 interface HLPost {
   _id: string;
+  postId?: string;
   status?: string;
+  // Content — HL composer stores the post body in "summary"
+  summary?: string;
   content?: string;
   body?: string;
-  summary?: string;
-  type?: string;
-  postType?: string;
+  // Platform — single string e.g. "google", "facebook", "instagram", "tiktok", "linkedin"
   platform?: string;
+  channel?: string;
   channels?: string[];
   platforms?: string[];
-  scheduleTime?: string;
+  // Dates — HL uses "scheduleDate" in composer responses
+  scheduleDate?: string;
+  displayDate?: string;
   scheduledAt?: string;
+  scheduleTime?: string;
   publishedAt?: string;
+  // Metadata
+  type?: string;
+  postType?: string;
   tags?: string[];
+  media?: { url: string; type: string }[];
   createdAt?: string;
   updatedAt?: string;
+  postApprovalDetails?: { approvalStatus?: string };
+  user?: { id?: string; firstName?: string; lastName?: string };
 }
 
 interface HLAccount {
@@ -106,11 +119,13 @@ function extractPlatforms(post: HLPost): string[] {
 }
 
 function extractContent(post: HLPost): string {
-  return (post.content || post.body || post.summary || "").trim();
+  // HL composer uses "summary" as the post body field
+  return (post.summary || post.content || post.body || "").trim();
 }
 
 function extractScheduledDate(post: HLPost): string | null {
-  const dateStr = post.scheduleTime || post.scheduledAt;
+  // HL composer uses "scheduleDate"; fall back to other fields
+  const dateStr = post.scheduleDate || post.displayDate || post.scheduledAt || post.scheduleTime;
   if (!dateStr) return null;
   return dateStr.split("T")[0];
 }
@@ -214,9 +229,12 @@ async function fetchAllHLPosts(token: string, locationId: string, accountIds: st
       skip: String(skip),
       fromDate,
       toDate,
+      includeUsers: "true",
+      postType: "post",
     };
     if (accountIds.length > 0) {
-      body.accounts = accountIds.join(", ");
+      // No spaces between IDs — HL requires comma-only separation
+      body.accounts = accountIds.join(",");
     }
     const response = await fetch(url, {
       method: "POST",
@@ -232,11 +250,30 @@ async function fetchAllHLPosts(token: string, locationId: string, accountIds: st
       throw new Error(`HighLevel API returned ${response.status}: ${await response.text()}`);
     }
 
-    const data = await response.json() as { posts?: HLPost[]; data?: HLPost[]; count?: number; total?: number; meta?: { total?: number } };
-    const posts: HLPost[] = data.posts || data.data || [];
+    const rawData = await response.json() as {
+      success?: boolean;
+      results?: { posts?: HLPost[]; total?: number; count?: number };
+      posts?: HLPost[];
+      data?: HLPost[];
+      count?: number;
+      total?: number;
+      meta?: { total?: number };
+    };
+    // Log first page response so we can inspect the real shape if debugging
+    if (skip === 0) {
+      console.log("[HL posts raw sample]", JSON.stringify(rawData).slice(0, 1500));
+    }
+    // HL wraps posts under results.posts (composer API response shape)
+    const posts: HLPost[] = rawData.results?.posts || rawData.posts || rawData.data || [];
     allPosts.push(...posts);
 
-    const total = data.meta?.total || data.count || data.total || 0;
+    const total =
+      rawData.results?.total ??
+      rawData.results?.count ??
+      rawData.meta?.total ??
+      rawData.count ??
+      rawData.total ??
+      0;
     skip += limit;
     hasMore = posts.length === limit && (total === 0 || skip < total);
   }

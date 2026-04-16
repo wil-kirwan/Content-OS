@@ -51,6 +51,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   x: "bg-black",
   gmb: "bg-green-600",
   google_my_business: "bg-green-600",
+  google: "bg-green-600",
   podcast: "bg-purple-600",
 };
 
@@ -66,6 +67,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   x: "Twitter / X",
   gmb: "Google My Business",
   google_my_business: "Google My Business",
+  google: "Google My Business",
   podcast: "Podcast",
 };
 
@@ -77,6 +79,7 @@ interface SyncResult {
   itemsSynced: number;
   itemsFailed: number;
   platformBreakdown: Record<string, number>;
+  accountBreakdown: Record<string, { name: string; platform: string; count: number }>;
   message: string;
   errors: string[];
 }
@@ -240,28 +243,21 @@ export default function Integrations() {
                 <p className={`font-semibold text-sm ${syncResult.success ? "text-green-800" : "text-orange-800"}`}>
                   {syncResult.message}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {syncResult.accountsSynced > 0 && (
-                    <Badge variant="outline" className="text-xs bg-white">
-                      {syncResult.accountsSynced} social accounts found
-                    </Badge>
-                  )}
-                  {syncResult.itemsSynced > 0 && (
-                    <>
-                      <Badge variant="outline" className="text-xs bg-white">
-                        {syncResult.itemsCreated} new posts added
+                {syncResult.itemsSynced > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {Object.entries(syncResult.accountBreakdown ?? {}).map(([key, acct]) => (
+                      <Badge key={key} variant="outline" className="text-xs bg-white gap-1">
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${PLATFORM_COLORS[acct.platform] ?? "bg-gray-500"}`} />
+                        {acct.name}: {acct.count} {acct.count === 1 ? "post" : "posts"}
                       </Badge>
-                      <Badge variant="outline" className="text-xs bg-white">
-                        {syncResult.itemsUpdated} posts updated
-                      </Badge>
-                      {Object.entries(syncResult.platformBreakdown).map(([lane, count]) => (
-                        <Badge key={lane} variant="outline" className="text-xs bg-white">
-                          {lane}: {count}
-                        </Badge>
-                      ))}
-                    </>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                )}
+                {syncResult.accountsSynced > 0 && syncResult.itemsSynced === 0 && (
+                  <p className="mt-1 text-xs text-green-700">
+                    {syncResult.accountsSynced} accounts are connected — use a wider date range to sync older posts.
+                  </p>
+                )}
                 {syncResult.errors.length > 0 && (
                   <p className="mt-1 text-xs text-orange-700">{syncResult.errors[0]}</p>
                 )}
@@ -403,37 +399,45 @@ export default function Integrations() {
                 </h2>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {socialAccounts.map((acct) => (
-                  <div
-                    key={acct.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border bg-card"
-                  >
-                    {acct.avatar ? (
-                      <img
-                        src={acct.avatar}
-                        alt={acct.name}
-                        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                    ) : (
-                      <PlatformInitial platform={acct.platform} />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{acct.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                          {PLATFORM_LABELS[acct.platform] ?? acct.platform}
-                        </Badge>
-                        {acct.username && (
-                          <span className="text-xs text-muted-foreground truncate">@{acct.username}</span>
+                {socialAccounts.map((acct) => {
+                  const syncInfo = syncResult?.accountBreakdown?.[acct.accountId];
+                  return (
+                    <div
+                      key={acct.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                    >
+                      {acct.avatar ? (
+                        <img
+                          src={acct.avatar}
+                          alt={acct.name}
+                          className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <PlatformInitial platform={acct.platform} />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{acct.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                            {PLATFORM_LABELS[acct.platform] ?? acct.platform}
+                          </Badge>
+                          {acct.username && (
+                            <span className="text-xs text-muted-foreground truncate">@{acct.username}</span>
+                          )}
+                        </div>
+                        {syncInfo && (
+                          <p className="text-xs text-primary font-medium mt-0.5">
+                            {syncInfo.count} {syncInfo.count === 1 ? "post" : "posts"} synced
+                          </p>
                         )}
                       </div>
+                      <div className="flex-shrink-0">
+                        <div className="w-2 h-2 rounded-full bg-green-500" title="Active" />
+                      </div>
                     </div>
-                    <div className="flex-shrink-0">
-                      <div className="w-2 h-2 rounded-full bg-green-500" title="Active" />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

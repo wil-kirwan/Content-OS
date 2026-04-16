@@ -93,6 +93,8 @@ interface HLPost {
   updatedAt?: string;
   postApprovalDetails?: { approvalStatus?: string };
   user?: { id?: string; firstName?: string; lastName?: string };
+  // Which connected account(s) this post targets — the authoritative platform source
+  accountIds?: string[];
 }
 
 interface HLAccount {
@@ -468,6 +470,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
   let accountsSynced = 0;
   const errors: string[] = [];
   const platformBreakdown: Record<string, number> = {};
+  const accountBreakdown: Record<string, { name: string; platform: string; count: number }> = {};
 
   const { fromDate: reqFromDate, toDate: reqToDate } = req.body as { fromDate?: string; toDate?: string };
   const dateRange = getMonthDateRange(reqFromDate, reqToDate);
@@ -530,79 +533,112 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
       // Step 2: Fetch all social posts from HighLevel (using accountIds and date range)
       const hlPosts = await fetchAllHLPosts(integration.encryptedToken, integration.locationId, accountIds, dateRange.from, dateRange.to);
 
-      // Step 3: Expand each post into one record per platform
-      type PostPlatformPair = { post: HLPost; platform: string; laneName: string };
-      const pairs: PostPlatformPair[] = [];
+      // Step 2.5: Build a lookup map from stored accountId → stored account record
+      // This is the authoritative source for which platform a post belongs to.
+      // post.platform from HL is unreliable (it reflects the post type, not the connected account).
+      const storedAccounts = await db.select().from(socialAccountsTable)
+        .where(and(
+          eq(socialAccountsTable.workspaceId, params.data.workspaceId),
+          eq(socialAccountsTable.integrationId, integration.id),
+        ));
+      const accountIdMap = new Map(storedAccounts.map((a) => [a.accountId, a]));
+
+      // Step 3: Build pairs — one planner item per (post × matched account)
+      type PostPair = {
+        post: HLPost;
+        platform: string;
+        laneName: string;
+        externalId: string;
+        accountName: string;
+        accountKey: string; // for breakdown
+      };
+      const pairs: PostPair[] = [];
 
       for (const post of hlPosts) {
-        const platforms = extractPlatforms(post);
-        if (platforms.length === 0) continue;
-        for (const platform of platforms) {
+        const postAccountIds = post.accountIds ?? [];
+        let handled = false;
+
+        for (const postAccountId of postAccountIds) {
+          const matchedAccount = accountIdMap.get(postAccountId);
+          if (!matchedAccount) continue;
+
+          const platform = matchedAccount.platform.toLowerCase();
           const laneName = HL_PLATFORM_TO_LANE[platform];
-          if (laneName) {
-            pairs.push({ post, platform, laneName });
-          }
+          if (!laneName) continue;
+
+          // Key uses the full accountId so each account gets its own dedup slot
+          const externalId = `${post._id}::${postAccountId}`;
+          pairs.push({ post, platform, laneName, externalId, accountName: matchedAccount.name, accountKey: postAccountId });
+          handled = true;
+        }
+
+        // Fallback: no accountIds matched a stored account — use post.platform
+        if (!handled) {
+          const platform = post.platform?.toLowerCase();
+          if (!platform) continue;
+          const laneName = HL_PLATFORM_TO_LANE[platform];
+          if (!laneName) continue;
+          const externalId = `${post._id}::${platform}`;
+          pairs.push({ post, platform, laneName, externalId, accountName: platform, accountKey: platform });
         }
       }
 
-      // Step 4: Find which external IDs already exist in the DB
-      const externalIds = pairs.map(({ post, platform }) => `${post._id}::${platform}`);
+      // Step 4: Load ALL existing HL planner items for this workspace, then find which ones
+      // correspond to any post in this batch (by post._id prefix). Delete them so we can
+      // re-insert with correct account-based attribution, removing any previously wrong-lane items.
+      if (pairs.length > 0) {
+        const allExistingHL = await db
+          .select({ id: plannerItemsTable.id, externalObjectId: plannerItemsTable.externalObjectId })
+          .from(plannerItemsTable)
+          .where(and(
+            eq(plannerItemsTable.workspaceId, params.data.workspaceId),
+            eq(plannerItemsTable.externalSource, "highlevel"),
+          ));
 
-      const existingItems = externalIds.length > 0
-        ? await db.select().from(plannerItemsTable).where(
-            and(
-              eq(plannerItemsTable.workspaceId, params.data.workspaceId),
-              eq(plannerItemsTable.externalSource, "highlevel"),
-              inArray(plannerItemsTable.externalObjectId, externalIds)
-            )
-          )
-        : [];
+        const batchPostIds = new Set(hlPosts.map((p) => p._id));
+        const staleIds = allExistingHL
+          .filter((item) => {
+            const postId = item.externalObjectId?.split("::")[0];
+            return postId && batchPostIds.has(postId);
+          })
+          .map((item) => item.id);
 
-      const existingMap = new Map(existingItems.map((i) => [i.externalObjectId, i]));
+        if (staleIds.length > 0) {
+          await db.delete(plannerItemsTable).where(inArray(plannerItemsTable.id, staleIds));
+        }
+      }
 
-      // Step 5: Upsert each pair
-      for (const { post, platform, laneName } of pairs) {
-        const externalId = `${post._id}::${platform}`;
+      // Step 5: Insert all pairs as fresh records (no update needed since we deleted stale ones)
+      for (const { post, platform, laneName, externalId, accountName, accountKey } of pairs) {
         const content = extractContent(post);
         const plannedDate = extractScheduledDate(post);
         const plannerStatus = HL_STATUS_TO_PLANNER[post.status ?? ""] || "planned";
         const title = content.slice(0, 100) || `${laneName} post`;
 
         try {
-          const existing = existingMap.get(externalId);
-          if (existing) {
-            await db.update(plannerItemsTable).set({
-              title,
-              description: content || null,
-              laneName,
-              status: plannerStatus,
-              syncStatus: "synced",
-              plannedDate: plannedDate ?? existing.plannedDate,
-              lastSyncAt: new Date(),
-              updatedAt: new Date(),
-            }).where(eq(plannerItemsTable.id, existing.id));
-            itemsUpdated++;
-          } else {
-            await db.insert(plannerItemsTable).values({
-              workspaceId: params.data.workspaceId,
-              laneGroup: "social",
-              laneName,
-              title,
-              description: content || null,
-              plannedDate,
-              status: plannerStatus,
-              approvalStatus: "pending",
-              priority: "medium",
-              assetLinks: [],
-              externalSource: "highlevel",
-              externalObjectType: "social_post",
-              externalObjectId: externalId,
-              syncStatus: "synced",
-              lastSyncAt: new Date(),
-            });
-            itemsCreated++;
-          }
+          await db.insert(plannerItemsTable).values({
+            workspaceId: params.data.workspaceId,
+            laneGroup: "social",
+            laneName,
+            title,
+            description: content || null,
+            plannedDate,
+            status: plannerStatus,
+            approvalStatus: "pending",
+            priority: "medium",
+            assetLinks: [],
+            externalSource: "highlevel",
+            externalObjectType: "social_post",
+            externalObjectId: externalId,
+            syncStatus: "synced",
+            lastSyncAt: new Date(),
+          });
+          itemsCreated++;
           platformBreakdown[laneName] = (platformBreakdown[laneName] || 0) + 1;
+          if (!accountBreakdown[accountKey]) {
+            accountBreakdown[accountKey] = { name: accountName, platform, count: 0 };
+          }
+          accountBreakdown[accountKey].count++;
         } catch (err) {
           itemsFailed++;
           errors.push(`Failed to sync post ${post._id} (${platform}): ${String(err)}`);
@@ -644,11 +680,12 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
     itemsSynced: totalSynced,
     itemsFailed,
     platformBreakdown,
+    accountBreakdown,
     message: postErrors.length === 0
       ? totalSynced > 0
-        ? `Synced ${totalSynced} social posts (${itemsCreated} new, ${itemsUpdated} updated) across ${accountsSynced} accounts`
+        ? `Synced ${totalSynced} posts across ${accountsSynced} accounts`
         : accountsSynced > 0
-          ? `Found ${accountsSynced} connected social accounts — no posts returned`
+          ? `${accountsSynced} accounts connected — no posts found in this date range`
           : "No accounts or posts found in HighLevel Social Planner"
       : postErrors[0],
     errors,

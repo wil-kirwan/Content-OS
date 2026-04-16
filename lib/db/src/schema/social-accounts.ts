@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { workspacesTable } from "./workspaces";
 import { integrationsTable } from "./integrations";
 
@@ -12,6 +12,8 @@ export const socialAccountsTable = pgTable("social_accounts", {
   username: text("username"),
   avatar: text("avatar"),
   accountType: text("account_type"),
+  expireAt: timestamp("expire_at"),
+  isExpired: boolean("is_expired").default(false),
   status: text("status").notNull().default("active"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

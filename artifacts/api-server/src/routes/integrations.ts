@@ -111,6 +111,9 @@ interface HLAccount {
   profilePicture?: string;
   accountType?: string;
   status?: string;
+  expire?: string;
+  isExpired?: boolean;
+  originId?: string;
 }
 
 function extractPlatforms(post: HLPost): string[] {
@@ -133,7 +136,33 @@ function extractScheduledDate(post: HLPost): string | null {
 }
 
 // Fetch and parse HighLevel social accounts for a location
-async function fetchHLAccounts(token: string, locationId: string): Promise<{ accountId: string; platform: string; name: string; username?: string; avatar?: string; accountType?: string }[]> {
+interface ParsedHLAccount {
+  accountId: string;
+  platform: string;
+  name: string;
+  username?: string;
+  avatar?: string;
+  accountType?: string;
+  expireAt?: Date;
+  isExpired?: boolean;
+}
+
+function parseHLAccount(acct: HLAccount, fallbackPlatform?: string): ParsedHLAccount | null {
+  const id = acct.id || acct._id || acct.accountId;
+  if (!id) return null;
+  return {
+    accountId: id,
+    platform: (acct.platform || fallbackPlatform || "unknown").toLowerCase(),
+    name: acct.name || acct.displayName || "Account",
+    username: acct.username || acct.originId,
+    avatar: acct.avatar || acct.picture || acct.profilePicture,
+    accountType: acct.type || acct.accountType,
+    expireAt: acct.expire ? new Date(acct.expire) : undefined,
+    isExpired: acct.isExpired ?? false,
+  };
+}
+
+async function fetchHLAccounts(token: string, locationId: string): Promise<ParsedHLAccount[]> {
   const url = `https://services.leadconnectorhq.com/social-media-posting/${locationId}/accounts`;
   const response = await fetch(url, {
     headers: {
@@ -149,64 +178,39 @@ async function fetchHLAccounts(token: string, locationId: string): Promise<{ acc
 
   const data = await response.json() as {
     success?: boolean;
-    results?: Record<string, HLAccount[]> | HLAccount[] | { accounts?: HLAccount[] };
+    results?: { accounts?: HLAccount[]; groups?: unknown[] } | HLAccount[] | Record<string, HLAccount[]>;
     accounts?: HLAccount[];
     data?: HLAccount[];
   };
 
-  const accounts: { accountId: string; platform: string; name: string; username?: string; avatar?: string; accountType?: string }[] = [];
+  const parsed: ParsedHLAccount[] = [];
 
-  // Results can be an object keyed by platform (e.g. { facebook: [...], instagram: [...] })
-  // OR a flat array, OR { accounts: [...] }
+  // Primary shape: { results: { accounts: [...] } }  — the actual HL API response
   const results = data.results ?? data.accounts ?? data.data;
 
-  if (results && !Array.isArray(results) && typeof results === "object" && !("accounts" in results)) {
-    // Keyed by platform
-    for (const [platform, platformAccounts] of Object.entries(results as Record<string, HLAccount[]>)) {
-      if (!Array.isArray(platformAccounts)) continue;
-      for (const acct of platformAccounts) {
-        const id = acct._id || acct.id || acct.accountId;
-        if (!id) continue;
-        accounts.push({
-          accountId: id,
-          platform: platform.toLowerCase(),
-          name: acct.name || acct.displayName || platform,
-          username: acct.username,
-          avatar: acct.avatar || acct.picture || acct.profilePicture,
-          accountType: acct.accountType || acct.type,
-        });
-      }
+  if (results && !Array.isArray(results) && typeof results === "object" && "accounts" in results) {
+    const inner = (results as { accounts?: HLAccount[] }).accounts ?? [];
+    for (const acct of inner) {
+      const p = parseHLAccount(acct);
+      if (p) parsed.push(p);
     }
   } else if (Array.isArray(results)) {
     for (const acct of results as HLAccount[]) {
-      const id = acct._id || acct.id || acct.accountId;
-      if (!id) continue;
-      accounts.push({
-        accountId: id,
-        platform: (acct.platform || acct.type || "unknown").toLowerCase(),
-        name: acct.name || acct.displayName || "Account",
-        username: acct.username,
-        avatar: acct.avatar || acct.picture || acct.profilePicture,
-        accountType: acct.accountType || acct.type,
-      });
+      const p = parseHLAccount(acct);
+      if (p) parsed.push(p);
     }
-  } else if (results && typeof results === "object" && "accounts" in results) {
-    const inner = (results as { accounts?: HLAccount[] }).accounts ?? [];
-    for (const acct of inner) {
-      const id = acct._id || acct.id || acct.accountId;
-      if (!id) continue;
-      accounts.push({
-        accountId: id,
-        platform: (acct.platform || acct.type || "unknown").toLowerCase(),
-        name: acct.name || acct.displayName || "Account",
-        username: acct.username,
-        avatar: acct.avatar || acct.picture || acct.profilePicture,
-        accountType: acct.accountType || acct.type,
-      });
+  } else if (results && typeof results === "object") {
+    // Keyed-by-platform shape: { facebook: [...], instagram: [...] }
+    for (const [platform, platformAccounts] of Object.entries(results as Record<string, HLAccount[]>)) {
+      if (!Array.isArray(platformAccounts)) continue;
+      for (const acct of platformAccounts) {
+        const p = parseHLAccount(acct, platform);
+        if (p) parsed.push(p);
+      }
     }
   }
 
-  return accounts;
+  return parsed;
 }
 
 function getMonthDateRange(fromDate?: string, toDate?: string): { from: string; to: string } {
@@ -490,6 +494,8 @@ router.post("/workspaces/:workspaceId/integrations/:id/refresh-accounts", async 
           avatar: acct.avatar ?? existing[0].avatar,
           accountType: acct.accountType ?? existing[0].accountType,
           platform: acct.platform,
+          expireAt: acct.expireAt ?? existing[0].expireAt,
+          isExpired: acct.isExpired ?? existing[0].isExpired,
           status: "active",
           lastSyncedAt: new Date(),
           updatedAt: new Date(),
@@ -504,6 +510,8 @@ router.post("/workspaces/:workspaceId/integrations/:id/refresh-accounts", async 
           username: acct.username,
           avatar: acct.avatar,
           accountType: acct.accountType,
+          expireAt: acct.expireAt,
+          isExpired: acct.isExpired,
           status: "active",
           lastSyncedAt: new Date(),
         });
@@ -570,6 +578,8 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
               avatar: acct.avatar ?? existing[0].avatar,
               accountType: acct.accountType ?? existing[0].accountType,
               platform: acct.platform,
+              expireAt: acct.expireAt ?? existing[0].expireAt,
+              isExpired: acct.isExpired ?? existing[0].isExpired,
               status: "active",
               lastSyncedAt: new Date(),
               updatedAt: new Date(),
@@ -584,6 +594,8 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync", async (req, res): 
               username: acct.username,
               avatar: acct.avatar,
               accountType: acct.accountType,
+              expireAt: acct.expireAt,
+              isExpired: acct.isExpired,
               status: "active",
               lastSyncedAt: new Date(),
             });
@@ -793,6 +805,8 @@ function formatAccount(a: typeof socialAccountsTable.$inferSelect) {
     username: a.username ?? null,
     avatar: a.avatar ?? null,
     accountType: a.accountType ?? null,
+    expireAt: a.expireAt?.toISOString() ?? null,
+    isExpired: a.isExpired ?? false,
     status: a.status,
     lastSyncedAt: a.lastSyncedAt?.toISOString() ?? null,
     createdAt: a.createdAt.toISOString(),

@@ -95,16 +95,121 @@ interface SocialAccount {
   username: string | null;
   avatar: string | null;
   accountType: string | null;
+  expireAt: string | null;
+  isExpired: boolean;
   status: string;
   lastSyncedAt: string | null;
 }
+
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  page: "Page",
+  profile: "Profile",
+  location: "Business Location",
+  group: "Group",
+  business: "Business",
+};
 
 function PlatformInitial({ platform }: { platform: string }) {
   const color = PLATFORM_COLORS[platform] ?? "bg-gray-500";
   const label = PLATFORM_LABELS[platform] ?? platform;
   return (
-    <div className={`w-9 h-9 rounded-full ${color} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+    <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
       {label.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function ExpiryBadge({ expireAt, isExpired }: { expireAt: string | null; isExpired: boolean }) {
+  if (!expireAt) return null;
+  const expiry = new Date(expireAt);
+  const now = new Date();
+  const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (isExpired || daysUntilExpiry <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+        <AlertTriangle className="h-3 w-3" /> Expired
+      </span>
+    );
+  }
+  if (daysUntilExpiry <= 14) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+        <Clock className="h-3 w-3" /> Expires {format(expiry, "MMM d, yyyy")}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+      <Clock className="h-3 w-3" /> Expires {format(expiry, "MMM d, yyyy")}
+    </span>
+  );
+}
+
+function AccountCard({ acct, syncInfo }: {
+  acct: SocialAccount;
+  syncInfo?: { name: string; platform: string; count: number };
+}) {
+  const platformLabel = PLATFORM_LABELS[acct.platform] ?? acct.platform;
+  const platformColor = PLATFORM_COLORS[acct.platform] ?? "bg-gray-500";
+  const typeLabel = acct.accountType ? (ACCOUNT_TYPE_LABELS[acct.accountType] ?? acct.accountType) : null;
+
+  return (
+    <div className="flex flex-col gap-3 p-4 rounded-xl border bg-card hover:shadow-sm transition-shadow">
+      {/* Header: avatar + platform badge */}
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 relative">
+          {acct.avatar ? (
+            <img
+              src={acct.avatar}
+              alt={acct.name}
+              className="w-12 h-12 rounded-full object-cover border"
+              onError={(e) => {
+                const parent = (e.target as HTMLImageElement).parentElement;
+                if (parent) {
+                  (e.target as HTMLImageElement).style.display = "none";
+                  const fallback = parent.querySelector(".avatar-fallback") as HTMLElement;
+                  if (fallback) fallback.style.display = "flex";
+                }
+              }}
+            />
+          ) : null}
+          <div
+            className={`avatar-fallback w-12 h-12 rounded-full ${platformColor} flex items-center justify-center text-white text-sm font-bold border ${acct.avatar ? "hidden" : ""}`}
+          >
+            {platformLabel.slice(0, 2).toUpperCase()}
+          </div>
+          {/* Small platform indicator dot */}
+          <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full ${platformColor} border-2 border-background`} />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm leading-tight truncate">{acct.name}</p>
+          {acct.username && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">@{acct.username}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Platform + type */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`inline-flex items-center text-xs font-medium text-white px-2 py-0.5 rounded-full ${platformColor}`}>
+          {platformLabel}
+        </span>
+        {typeLabel && (
+          <span className="text-xs text-muted-foreground border rounded-full px-2 py-0.5">
+            {typeLabel}
+          </span>
+        )}
+        {syncInfo && (
+          <span className="text-xs text-primary font-medium">
+            {syncInfo.count} {syncInfo.count === 1 ? "post" : "posts"} synced
+          </span>
+        )}
+      </div>
+
+      {/* Expiry */}
+      <ExpiryBadge expireAt={acct.expireAt} isExpired={acct.isExpired} />
     </div>
   );
 }
@@ -472,45 +577,13 @@ export default function Integrations() {
             {/* Account cards — shown whenever data is present, even while a background refresh runs */}
             {!isAccountsLoading && socialAccounts && socialAccounts.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {socialAccounts.map((acct) => {
-                  const syncInfo = syncResult?.accountBreakdown?.[acct.accountId];
-                  return (
-                    <div
-                      key={acct.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border bg-card"
-                    >
-                      {acct.avatar ? (
-                        <img
-                          src={acct.avatar}
-                          alt={acct.name}
-                          className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                      ) : (
-                        <PlatformInitial platform={acct.platform} />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{acct.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                            {PLATFORM_LABELS[acct.platform] ?? acct.platform}
-                          </Badge>
-                          {acct.username && (
-                            <span className="text-xs text-muted-foreground truncate">@{acct.username}</span>
-                          )}
-                        </div>
-                        {syncInfo && (
-                          <p className="text-xs text-primary font-medium mt-0.5">
-                            {syncInfo.count} {syncInfo.count === 1 ? "post" : "posts"} synced
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-green-500" title="Active" />
-                      </div>
-                    </div>
-                  );
-                })}
+                {socialAccounts.map((acct) => (
+                  <AccountCard
+                    key={acct.id}
+                    acct={acct}
+                    syncInfo={syncResult?.accountBreakdown?.[acct.accountId]}
+                  />
+                ))}
               </div>
             )}
 

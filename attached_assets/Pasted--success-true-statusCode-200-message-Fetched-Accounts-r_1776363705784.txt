@@ -1,0 +1,134 @@
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Fetched Accounts",
+  "results": {
+    "accounts": [
+      {
+        "id": "66b1470eb835b69f31850d5e_jhrQpnaQmlvhbwAvaIs7_10904705303279091070",
+        "oauthId": "66b1470eb835b69f31850d5e",
+        "profileId": "66b1471116a5e27da775090e",
+        "name": "Times 20 Consulting",
+        "platform": "google",
+        "type": "location",
+        "expire": "2026-04-16T02:34:45.000Z",
+        "isExpired": false,
+        "originId": "10904705303279091070",
+        "meta": {
+          "locationId": "locations/10904705303279091070",
+          "accountId": "accounts/111812746163251802827",
+          "storeCode": "11021636670828604098",
+          "isVerified": "ChIJcbMbqcUZr2oRPGBPQ21omf4"
+        },
+        "deleted": false,
+        "updatedAt": "2025-06-25T05:12:30.467Z",
+        "hasStatisticsPermissions": false,
+        "buildingStatistics": false,
+        "syncPosts": false
+      },
+      {
+        "id": "67f11a68c297663352c98c43_jhrQpnaQmlvhbwAvaIs7_653873611135815_page",
+        "oauthId": "67f11a68c297663352c98c43",
+        "profileId": "67f11a6da710195f9caad6ad",
+        "name": "X20.io",
+        "avatar": "https://storage.googleapis.com/highlevel-backend.appspot.com/social-media-posting/profile-picture/facebook/pages/653873611135815.jpg",
+        "platform": "facebook",
+        "type": "page",
+        "expire": "2026-05-04T03:58:45.974Z",
+        "isExpired": false,
+        "originId": "653873611135815",
+        "deleted": false,
+        "updatedAt": "2025-10-27T00:26:47.746Z",
+        "hasStatisticsPermissions": true,
+        "buildingStatistics": false,
+        "syncPosts": false
+      },
+      {
+        "id": "68d6a9b421dbc29aac6ab675_jhrQpnaQmlvhbwAvaIs7_17841478753315678",
+        "oauthId": "68d6a9b421dbc29aac6ab675",
+        "profileId": "692cf9dcdf94128e76959fc1",
+        "name": "x20crm",
+        "avatar": "https://storage.googleapis.com/highlevel-backend.appspot.com/social-media-posting/profile-picture/instagram/profile/17841478753315678.jpg",
+        "platform": "instagram",
+        "type": "profile",
+        "expire": "2026-05-17T21:53:44.541Z",
+        "isExpired": false,
+        "originId": "17841478753315678",
+        "meta": {
+          "pageId": "653873611135815",
+          "loginType": "facebook"
+        },
+        "deleted": false,
+        "updatedAt": "2025-12-01T02:13:51.845Z",
+        "hasStatisticsPermissions": true,
+        "buildingStatistics": false,
+        "syncPosts": false
+      },
+      {
+        "id": "67a62d8d6bb1fdf8f6e2c871_jhrQpnaQmlvhbwAvaIs7_Ned6PadnkN_profile",
+        "oauthId": "67a62d8d6bb1fdf8f6e2c871",
+        "profileId": "692b5effbb81ca0ba897db95",
+        "name": "🐦‍⬛ Wil Kirwan, CSPO, PSM",
+        "avatar": "https://storage.googleapis.com/highlevel-backend.appspot.com/social-media-posting/profile-picture/linkedin/profile/Ned6PadnkN.jpg",
+        "platform": "linkedin",
+        "type": "profile",
+        "expire": "2026-05-04T04:06:34.661Z",
+        "isExpired": false,
+        "originId": "Ned6PadnkN",
+        "meta": {
+          "urn": "urn:li:person:Ned6PadnkN"
+        },
+        "deleted": false,
+        "updatedAt": "2025-11-29T21:00:49.439Z",
+        "hasStatisticsPermissions": true,
+        "buildingStatistics": false,
+        "syncPosts": false
+      },
+      {
+        "id": "667cbfbd9e8357b37260981d_jhrQpnaQmlvhbwAvaIs7_17876349_page",
+        "oauthId": "67a62d8d6bb1fdf8f6e2c871",
+        "profileId": "667cbfc19e835723ba609820",
+        "name": "Times 20 Consulting",
+        "avatar": "https://storage.googleapis.com/highlevel-backend.appspot.com/social-media-posting/profile-picture/linkedin/page/17876349.jpg",
+        "platform": "linkedin",
+        "type": "page",
+        "expire": "2026-05-04T04:06:34.661Z",
+        "isExpired": false,
+        "originId": "17876349",
+        "meta": {
+          "urn": "urn:li:organization:17876349"
+        },
+        "deleted": false,
+        "updatedAt": "2025-11-29T21:00:54.800Z",
+        "hasStatisticsPermissions": true,
+        "buildingStatistics": false,
+        "syncPosts": false
+      },
+      {
+        "id": "69e0cac071cde612c75eda62_jhrQpnaQmlvhbwAvaIs7_68f6cf11c706e0c565224953",
+        "oauthId": "69e0cac071cde612c75eda62",
+        "profileId": "69e0cac171cde6bccf5eda84",
+        "name": "Announcements",
+        "avatar": "https://storage.googleapis.com/revex-communities-production/jhrQpnaQmlvhbwAvaIs7/groups/425ac220-c4f8-404d-8030-15154b7a8d82",
+        "platform": "community",
+        "type": "group",
+        "isExpired": false,
+        "originId": "68f6cf11c706e0c565224953",
+        "meta": {
+          "type": "PUBLIC",
+          "groupSlug": "wymbc",
+          "channelSlug": "Announcements-7mHUkD",
+          "groupName": "Win Your Money Back Challenge",
+          "groupId": "68f6cf11c706e0c56522493e"
+        },
+        "deleted": false,
+        "updatedAt": "2026-04-16T11:40:49.035Z",
+        "hasStatisticsPermissions": false,
+        "buildingStatistics": false,
+        "syncPosts": false
+      }
+    ],
+    "groups": []
+  },
+  "traceId": "cb690537-7915-4d6c-be22-03f85519b019"
+}

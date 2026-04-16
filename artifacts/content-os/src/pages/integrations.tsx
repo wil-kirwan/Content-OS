@@ -206,8 +206,12 @@ export default function Integrations() {
       if (!res.ok) throw new Error("Failed to refresh accounts");
       return res.json() as Promise<{ success: boolean; accounts: SocialAccount[] }>;
     },
-    onSuccess: () => {
-      refetchAccounts();
+    onSuccess: (data) => {
+      // Directly populate the cache with accounts already returned by the POST — no extra GET needed
+      queryClient.setQueryData(
+        ["social-accounts", workspaceId, firstIntegration?.id],
+        data.accounts
+      );
     },
   });
 

@@ -14,6 +14,7 @@ import Integrations from "@/pages/integrations";
 import Templates from "@/pages/templates";
 import Settings from "@/pages/settings";
 import Onboarding from "@/pages/onboarding";
+import Admin from "@/pages/admin";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,9 @@ function App() {
             <Switch>
               <Route path="/" component={() => <Redirect to="/dashboard" />} />
               <Route path="/onboarding" component={Onboarding} />
+              <Route path="/admin">
+                <AppShell><Admin /></AppShell>
+              </Route>
               <Route path="/dashboard">
                 <AppShell><Dashboard /></AppShell>
               </Route>

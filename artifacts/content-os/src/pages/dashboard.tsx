@@ -79,7 +79,7 @@ export default function Dashboard() {
             <CalendarIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.totalPlanned || 0}</div>
+            <div className="text-display text-3xl font-bold text-primary">{summary?.totalPlanned || 0}</div>
             <p className="text-xs text-muted-foreground">Items scheduled this month</p>
           </CardContent>
         </Card>
@@ -90,7 +90,7 @@ export default function Dashboard() {
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.totalPublished || 0}</div>
+            <div className="text-display text-3xl font-bold" style={{ color: '#1a8c5b' }}>{summary?.totalPublished || 0}</div>
             <p className="text-xs text-muted-foreground">{summary?.completionRate || 0}% completion rate</p>
           </CardContent>
         </Card>
@@ -101,7 +101,7 @@ export default function Dashboard() {
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{summary?.totalOverdue || 0}</div>
+            <div className="text-display text-3xl font-bold text-destructive">{summary?.totalOverdue || 0}</div>
             <p className="text-xs text-muted-foreground">Needs attention</p>
           </CardContent>
         </Card>
@@ -112,7 +112,7 @@ export default function Dashboard() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary?.activeCampaigns || 0}</div>
+            <div className="text-display text-3xl font-bold text-primary">{summary?.activeCampaigns || 0}</div>
             <p className="text-xs text-muted-foreground">Running currently</p>
           </CardContent>
         </Card>
@@ -128,14 +128,14 @@ export default function Dashboard() {
             <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => String(value)} />
-                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dce7f4" />
+                  <XAxis dataKey="name" stroke="#6b7f96" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#6b7f96" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => String(value)} />
+                  <Tooltip cursor={{fill: 'rgba(11,59,146,0.04)'}} contentStyle={{ borderRadius: '6px', border: '1px solid #c8d9ee', boxShadow: '0 4px 12px rgba(11,59,146,0.10)' }} />
                   <Legend />
-                  <Bar dataKey="Planned" stackId="a" fill="#62a8da" radius={[0, 0, 4, 4]} />
-                  <Bar dataKey="Draft" stackId="a" fill="#b5cde7" />
-                  <Bar dataKey="Published" stackId="a" fill="#08466e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Planned" stackId="a" fill="#62a8db" radius={[0, 0, 4, 4]} />
+                  <Bar dataKey="Draft" stackId="a" fill="#a9c4e4" />
+                  <Bar dataKey="Published" stackId="a" fill="#0b3b92" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

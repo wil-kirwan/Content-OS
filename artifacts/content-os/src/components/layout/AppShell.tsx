@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { LayoutDashboard, Calendar, Layers, Activity, LayoutTemplate, Settings, ShieldCheck, LogIn, LogOut } from "lucide-react";
-import logoSrc from "@/assets/x20_round_logo_180_1776220680564.png";
+import logoSrc from "@/assets/x20-blue-logo.svg";
 import { useAuth } from "@workspace/replit-auth-web";
 
 const ADMIN_EMAIL = "wil.kirwan@gmail.com";
@@ -32,10 +32,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <aside className="w-64 bg-sidebar text-sidebar-foreground flex flex-col flex-shrink-0">
         <div className="h-16 flex items-center gap-3 px-5 border-b border-white/10">
-          <img src={logoSrc} alt="X20" className="h-8 w-8 rounded-full flex-shrink-0" />
+          <img src={logoSrc} alt="X20" className="h-9 w-9 rounded-md flex-shrink-0 object-cover" />
           <div>
-            <p className="font-bold text-sm leading-tight text-white">X20 Content OS</p>
-            <p className="text-[10px] text-white/50 leading-tight">Marketing Command Center</p>
+            <p className="text-display font-bold text-[15px] leading-tight text-white tracking-tight">X20 Content OS</p>
+            <p className="text-[10px] text-white/50 leading-tight font-medium tracking-wide uppercase">Marketing Command Center</p>
           </div>
         </div>
 
@@ -104,9 +104,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-16 bg-card border-b flex items-center justify-between px-6 shrink-0">
-          <h2 className="font-semibold text-base capitalize">{pageTitle}</h2>
-          <div className="text-xs text-muted-foreground">x20.io</div>
+        <header className="h-16 bg-card border-b flex items-center justify-between px-6 shrink-0" style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <h2 className="text-heading font-semibold text-[17px] capitalize tracking-tight">{pageTitle}</h2>
+          <div className="text-xs text-muted-foreground font-medium tracking-wide">x20.io</div>
         </header>
         <div className="flex-1 overflow-y-auto p-6">
           {children}

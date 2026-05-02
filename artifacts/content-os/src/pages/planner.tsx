@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   useGetPlannerItems,
@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
   Plus, ChevronLeft, ChevronRight, Loader2, Trash2, Calendar as CalendarIcon,
-  Layout, List, X, ExternalLink, RefreshCw, AlertCircle, CheckCircle2
+  Layout, List, X, ExternalLink, RefreshCw, AlertCircle, CheckCircle2, Table2
 } from "lucide-react";
 import { format, parse, addMonths, subMonths, getDaysInMonth, startOfMonth, getDay } from "date-fns";
 import { LANE_GROUPS, STATUS_BADGE_COLORS, APPROVAL_BADGE_COLORS, SYNC_STATUS_COLORS, PRIORITY_COLORS } from "@/lib/planner-constants";
@@ -65,6 +65,8 @@ export default function Planner() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const parsedMonth = parse(currentMonth + "-01", "yyyy-MM-dd", new Date());
+  const daysInMonth = getDaysInMonth(parsedMonth);
+  const todayStr = format(new Date(), "yyyy-MM-dd");
 
   const { data: items, isLoading } = useGetPlannerItems(
     workspaceId,
@@ -178,12 +180,12 @@ export default function Planner() {
     setSelectedItem((prev) => prev ? { ...prev, [field]: value } : null);
   };
 
-  const openCreate = (laneGroupKey?: string, laneName?: string) => {
+  const openCreate = (laneGroupKey?: string, laneName?: string, dateStr?: string) => {
     setForm({
       ...BLANK_FORM,
       laneGroup: (laneGroupKey as typeof BLANK_FORM.laneGroup) || "social",
       laneName: laneName || "",
-      plannedDate: currentMonth + "-01",
+      plannedDate: dateStr || currentMonth + "-01",
     });
     setCreating(true);
   };
@@ -283,6 +285,10 @@ export default function Planner() {
           <TabsTrigger value="list" className="gap-1.5 text-xs">
             <List className="h-3.5 w-3.5" />
             List
+          </TabsTrigger>
+          <TabsTrigger value="timeline" className="gap-1.5 text-xs">
+            <Table2 className="h-3.5 w-3.5" />
+            Timeline
           </TabsTrigger>
         </TabsList>
 
@@ -473,6 +479,127 @@ export default function Planner() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+        {/* Timeline View — rows = lanes, columns = days */}
+        <TabsContent value="timeline" className="flex-1 mt-4 min-h-0 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="overflow-auto h-full rounded-lg border" style={{ maxHeight: "calc(100vh - 260px)" }}>
+              <table className="border-collapse text-xs" style={{ minWidth: `${160 + daysInMonth * 46}px` }}>
+                <thead className="sticky top-0 z-20">
+                  <tr>
+                    {/* Lane label header */}
+                    <th className="sticky left-0 z-30 w-[160px] min-w-[160px] bg-muted/80 backdrop-blur border-b border-r px-3 py-2 text-left font-semibold text-muted-foreground">
+                      Lane
+                    </th>
+                    {/* Day column headers */}
+                    {Array.from({ length: daysInMonth }, (_, i) => {
+                      const day = i + 1;
+                      const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
+                      const dow = getDay(new Date(dateStr));
+                      const isWeekend = dow === 0 || dow === 6;
+                      const isToday = dateStr === todayStr;
+                      return (
+                        <th
+                          key={day}
+                          className={`w-[46px] min-w-[46px] border-b border-r text-center py-1 font-medium ${isWeekend ? "bg-slate-100" : "bg-muted/80"} ${isToday ? "bg-primary/10" : ""}`}
+                        >
+                          <div className="text-[10px] text-muted-foreground leading-tight">
+                            {["Su","Mo","Tu","We","Th","Fr","Sa"][dow]}
+                          </div>
+                          <div className={`text-xs font-bold leading-tight ${isToday ? "text-primary" : isWeekend ? "text-muted-foreground" : ""}`}>
+                            {day}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {LANE_GROUPS.filter(g => !filterLane || g.key === filterLane).map((group) => (
+                    <Fragment key={group.key}>
+                      {/* Group header row */}
+                      <tr>
+                        <td
+                          className={`sticky left-0 z-10 border-b border-r px-3 py-1.5 font-semibold ${group.lightColor} ${group.textColor}`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${group.color}`} />
+                            <span>{group.label}</span>
+                            <span className="ml-auto text-[10px] font-normal opacity-60">
+                              {filteredItems.filter(i => i.laneGroup === group.key).length}
+                            </span>
+                          </div>
+                        </td>
+                        {Array.from({ length: daysInMonth }, (_, i) => {
+                          const day = i + 1;
+                          const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
+                          const dow = getDay(new Date(dateStr));
+                          const isWeekend = dow === 0 || dow === 6;
+                          return (
+                            <td key={day} className={`border-b border-r ${group.lightColor} ${isWeekend ? "opacity-60" : ""}`} />
+                          );
+                        })}
+                      </tr>
+
+                      {/* Lane rows */}
+                      {group.laneNames.map((laneName) => (
+                        <tr key={`${group.key}-${laneName}`} className="hover:bg-muted/20 group/row">
+                          {/* Sticky lane label */}
+                          <td className="sticky left-0 z-10 bg-background border-b border-r px-3 py-1 whitespace-nowrap w-[160px] min-w-[160px]">
+                            <span className="text-muted-foreground font-medium truncate block">{laneName}</span>
+                          </td>
+                          {/* Day cells */}
+                          {Array.from({ length: daysInMonth }, (_, i) => {
+                            const day = i + 1;
+                            const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
+                            const dow = getDay(new Date(dateStr));
+                            const isWeekend = dow === 0 || dow === 6;
+                            const isToday = dateStr === todayStr;
+                            const cellItems = filteredItems.filter(
+                              item => item.laneGroup === group.key &&
+                                item.laneName === laneName &&
+                                item.plannedDate?.split("T")[0] === dateStr
+                            );
+                            return (
+                              <td
+                                key={day}
+                                className={`border-b border-r p-0.5 align-top relative group/cell ${isWeekend ? "bg-slate-50/70" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                                style={{ minHeight: "34px", width: "46px", minWidth: "46px" }}
+                              >
+                                <div className="flex flex-col gap-0.5 min-h-[28px]">
+                                  {cellItems.map((item) => (
+                                    <button
+                                      key={item.id}
+                                      onClick={() => setSelectedItem(item)}
+                                      title={item.title}
+                                      className={`w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded truncate ${group.color} text-white hover:opacity-80 transition-opacity`}
+                                    >
+                                      {item.title.length > 14 ? item.title.slice(0, 13) + "…" : item.title}
+                                    </button>
+                                  ))}
+                                  <button
+                                    onClick={() => openCreate(group.key, laneName, dateStr)}
+                                    title={`Add to ${laneName} on day ${day}`}
+                                    className="opacity-0 group-hover/cell:opacity-100 transition-opacity flex items-center justify-center h-4 w-full text-muted-foreground hover:text-primary"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>

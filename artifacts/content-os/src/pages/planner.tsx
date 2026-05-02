@@ -503,7 +503,7 @@ export default function Planner() {
                     {Array.from({ length: daysInMonth }, (_, i) => {
                       const day = i + 1;
                       const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
-                      const dow = getDay(new Date(dateStr));
+                      const dow = getDay(new Date(dateStr + "T00:00:00"));
                       const isWeekend = dow === 0 || dow === 6;
                       const isToday = dateStr === todayStr;
                       return (
@@ -541,7 +541,7 @@ export default function Planner() {
                         {Array.from({ length: daysInMonth }, (_, i) => {
                           const day = i + 1;
                           const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
-                          const dow = getDay(new Date(dateStr));
+                          const dow = getDay(new Date(dateStr + "T00:00:00"));
                           const isWeekend = dow === 0 || dow === 6;
                           return (
                             <td key={day} className={`border-b border-r ${group.lightColor} ${isWeekend ? "opacity-60" : ""}`} />
@@ -560,7 +560,7 @@ export default function Planner() {
                           {Array.from({ length: daysInMonth }, (_, i) => {
                             const day = i + 1;
                             const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
-                            const dow = getDay(new Date(dateStr));
+                            const dow = getDay(new Date(dateStr + "T00:00:00"));
                             const isWeekend = dow === 0 || dow === 6;
                             const isToday = dateStr === todayStr;
                             const cellItems = filteredItems.filter(

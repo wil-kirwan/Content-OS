@@ -957,8 +957,14 @@ interface HLEmailCampaign {
   name?: string;
   subject?: string;
   status?: string;
+  emailStatus?: string;
   type?: string;
   campaignType?: string;
+  // Numeric Unix timestamps (milliseconds) — the real scheduled send dates
+  nextProcessingOn?: number;
+  dateScheduled?: number;
+  dateAdded?: number;
+  // String date fields (less common for schedule_later type)
   scheduledAt?: string;
   scheduleTime?: string;
   startDate?: string;
@@ -1055,12 +1061,25 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
       const title = (campaign.subject || campaign.name || "Email Campaign").slice(0, 200);
       const plannerStatus = HL_EMAIL_STATUS_TO_PLANNER[campaign.status ?? ""] ?? "planned";
       const laneName = hlEmailLaneName(campaign);
-      // Use the explicitly scheduled date if present; otherwise use today so the
-      // campaign appears in the current month's view and re-syncs refresh the date.
-      const explicitDate = campaign.scheduledAt ?? campaign.scheduleTime ?? campaign.startDate ?? null;
-      const plannedDate = explicitDate
-        ? explicitDate.split("T")[0]
-        : new Date().toISOString().split("T")[0];
+      // HL stores scheduled send dates as Unix ms timestamps (nextProcessingOn /
+      // dateScheduled), not as ISO strings. Prefer dateScheduled (set on
+      // completed sends) then nextProcessingOn (upcoming sends), then fall back
+      // to any string date fields. Use today only as a last resort so the
+      // campaign stays visible in the current month view.
+      const msTimestamp = campaign.dateScheduled ?? campaign.nextProcessingOn ?? null;
+      let plannedDate: string;
+      if (msTimestamp) {
+        plannedDate = new Date(msTimestamp).toISOString().split("T")[0];
+      } else {
+        const explicitDate =
+          campaign.scheduledAt ??
+          campaign.scheduleTime ??
+          campaign.startDate ??
+          null;
+        plannedDate = explicitDate
+          ? explicitDate.split("T")[0]
+          : new Date().toISOString().split("T")[0];
+      }
 
       try {
         const [existing] = await db.select({ id: plannerItemsTable.id })

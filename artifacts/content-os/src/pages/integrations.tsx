@@ -84,6 +84,17 @@ interface BlogSyncResult {
   errors: string[];
 }
 
+interface EmailSyncResult {
+  success: boolean;
+  campaignsFound: number;
+  campaignsCreated: number;
+  campaignsUpdated: number;
+  campaignsFailed: number;
+  campaignsSynced: number;
+  message: string;
+  errors: string[];
+}
+
 interface SyncResult {
   success: boolean;
   accountsSynced: number;
@@ -238,6 +249,8 @@ export default function Integrations() {
   const [syncingId, setSyncingId] = useState<number | null>(null);
   const [blogSyncResult, setBlogSyncResult] = useState<BlogSyncResult | null>(null);
   const [blogSyncingId, setBlogSyncingId] = useState<number | null>(null);
+  const [emailSyncResult, setEmailSyncResult] = useState<EmailSyncResult | null>(null);
+  const [emailSyncingId, setEmailSyncingId] = useState<number | null>(null);
 
   const { data: integrations, isLoading } = useGetIntegrations(
     workspaceId,
@@ -393,6 +406,43 @@ export default function Integrations() {
     syncBlogsMutation.mutate(integrationId);
   };
 
+  const syncEmailsMutation = useMutation({
+    mutationFn: async (integrationId: number) => {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/integrations/${integrationId}/sync-emails`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Email sync failed" }));
+        throw new Error((err as { error?: string }).error ?? "Email sync failed");
+      }
+      return res.json() as Promise<EmailSyncResult>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: getGetPlannerItemsQueryKey(workspaceId) });
+      setEmailSyncResult(data);
+      setEmailSyncingId(null);
+    },
+    onError: (err) => {
+      setEmailSyncResult({
+        success: false,
+        campaignsFound: 0,
+        campaignsCreated: 0,
+        campaignsUpdated: 0,
+        campaignsFailed: 0,
+        campaignsSynced: 0,
+        message: err instanceof Error ? err.message : "Email sync failed",
+        errors: [],
+      });
+      setEmailSyncingId(null);
+    },
+  });
+
+  const handleSyncEmails = (integrationId: number) => {
+    setEmailSyncingId(integrationId);
+    setEmailSyncResult(null);
+    syncEmailsMutation.mutate(integrationId);
+  };
+
   // Auto-fetch accounts from HL when integration is connected but no accounts are stored yet.
   useEffect(() => {
     if (
@@ -479,6 +529,45 @@ export default function Integrations() {
               </div>
             </div>
             <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {emailSyncResult && (
+        <div className={`rounded-lg border p-4 ${emailSyncResult.success ? "bg-emerald-50 border-emerald-200" : "bg-orange-50 border-orange-200"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              {emailSyncResult.success
+                ? <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                : <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+              }
+              <div>
+                <p className={`font-semibold text-sm ${emailSyncResult.success ? "text-emerald-800" : "text-orange-800"}`}>
+                  {emailSyncResult.message}
+                </p>
+                {emailSyncResult.campaignsSynced > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="text-xs bg-white gap-1">
+                      {emailSyncResult.campaignsCreated} new campaigns
+                    </Badge>
+                    {emailSyncResult.campaignsUpdated > 0 && (
+                      <Badge variant="outline" className="text-xs bg-white gap-1">
+                        {emailSyncResult.campaignsUpdated} updated
+                      </Badge>
+                    )}
+                    <Badge variant="outline" className="text-xs bg-white gap-1">
+                      {emailSyncResult.campaignsFound} total found
+                    </Badge>
+                  </div>
+                )}
+                {emailSyncResult.errors.length > 0 && (
+                  <p className="mt-1 text-xs text-orange-700">{emailSyncResult.errors[0]}</p>
+                )}
+              </div>
+            </div>
+            <button onClick={() => setEmailSyncResult(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -592,12 +681,14 @@ export default function Integrations() {
                   </div>
 
                   {/* What gets synced */}
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                    <p className="font-semibold mb-1 flex items-center gap-1.5">
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 space-y-1.5">
+                    <p className="font-semibold flex items-center gap-1.5">
                       <ArrowDownToLine className="h-3.5 w-3.5" />
-                      What syncs from HighLevel Social Planner
+                      What syncs from HighLevel
                     </p>
-                    <p>Scheduled and published posts from Facebook, Instagram, Instagram Stories, TikTok, LinkedIn, Twitter/X, YouTube Shorts, Google My Business, and Podcasts will appear in the Social section of your Master Planner.</p>
+                    <p><span className="font-medium">Social Posts:</span> Scheduled and published posts from Facebook, Instagram, Instagram Stories, TikTok, LinkedIn, Twitter/X, YouTube Shorts, Google My Business, and Podcasts → Social section.</p>
+                    <p><span className="font-medium">Blog Posts:</span> Published and scheduled blog posts from all blogs in your location → Blog Post lane.</p>
+                    <p><span className="font-medium">Email Campaigns:</span> All email (and SMS) campaigns → Email section of your Master Planner.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -627,6 +718,15 @@ export default function Integrations() {
                     >
                       {blogSyncingId === integration.id ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <ArrowDownToLine className="h-3 w-3 mr-1.5" />}
                       Sync Blog Posts
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSyncEmails(integration.id)}
+                      disabled={emailSyncingId === integration.id || integration.status !== "connected"}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {emailSyncingId === integration.id ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <ArrowDownToLine className="h-3 w-3 mr-1.5" />}
+                      Sync Email Campaigns
                     </Button>
                     <Button
                       size="sm"

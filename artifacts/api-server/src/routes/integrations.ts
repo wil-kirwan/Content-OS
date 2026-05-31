@@ -947,6 +947,163 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-blogs", async (req, 
   }
 });
 
+// ──────────────────────────────────────────────────────────────────────────────
+// HL Email Campaigns sync
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface HLEmailCampaign {
+  id: string;
+  name?: string;
+  status?: string;
+  type?: string;
+  scheduledAt?: string;
+  startDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+const HL_EMAIL_STATUS_TO_PLANNER: Record<string, string> = {
+  DRAFT: "draft",
+  draft: "draft",
+  SCHEDULED: "scheduled",
+  scheduled: "scheduled",
+  SENT: "published",
+  sent: "published",
+  ACTIVE: "published",
+  active: "published",
+  FAILED: "failed",
+  failed: "failed",
+  PAUSED: "planned",
+  paused: "planned",
+  COMPLETED: "published",
+  completed: "published",
+};
+
+async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<HLEmailCampaign[]> {
+  const all: HLEmailCampaign[] = [];
+  const limit = 100;
+  let skip = 0;
+  for (;;) {
+    const url = `https://services.leadconnectorhq.com/campaigns/?locationId=${encodeURIComponent(locationId)}&limit=${limit}&skip=${skip}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
+    });
+    if (!res.ok) break;
+    const data = await res.json() as { campaigns?: HLEmailCampaign[] };
+    const campaigns = data.campaigns ?? [];
+    all.push(...campaigns);
+    if (campaigns.length < limit) break;
+    skip += limit;
+  }
+  return all;
+}
+
+function hlEmailLaneName(campaign: HLEmailCampaign): string {
+  const type = (campaign.type ?? "").toLowerCase();
+  if (type === "sms") return "SMS";
+  return "Main Email Campaign";
+}
+
+router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req, res): Promise<void> => {
+  const workspaceId = parseInt(req.params.workspaceId, 10);
+  const integrationId = parseInt(req.params.id, 10);
+  if (isNaN(workspaceId) || isNaN(integrationId)) {
+    res.status(400).json({ error: "Invalid params" });
+    return;
+  }
+
+  const [integration] = await db.select().from(integrationsTable)
+    .where(and(eq(integrationsTable.workspaceId, workspaceId), eq(integrationsTable.id, integrationId)));
+
+  if (!integration) { res.status(404).json({ error: "Integration not found" }); return; }
+  if (!integration.encryptedToken || !integration.locationId || integration.status !== "connected") {
+    res.status(400).json({ error: "Integration is not connected or missing credentials" });
+    return;
+  }
+
+  let campaignsCreated = 0;
+  let campaignsUpdated = 0;
+  let campaignsFailed = 0;
+  const errors: string[] = [];
+
+  try {
+    const campaigns = await fetchAllHLEmailCampaigns(integration.encryptedToken, integration.locationId);
+
+    for (const campaign of campaigns) {
+      const title = (campaign.name || "Email Campaign").slice(0, 200);
+      const plannerStatus = HL_EMAIL_STATUS_TO_PLANNER[campaign.status ?? ""] ?? "planned";
+      const laneName = hlEmailLaneName(campaign);
+      const dateStr = campaign.scheduledAt ?? campaign.startDate ?? null;
+      const plannedDate = dateStr ? dateStr.split("T")[0] : null;
+
+      try {
+        const [existing] = await db.select({ id: plannerItemsTable.id })
+          .from(plannerItemsTable)
+          .where(and(
+            eq(plannerItemsTable.workspaceId, workspaceId),
+            eq(plannerItemsTable.externalSource, "highlevel_email"),
+            eq(plannerItemsTable.externalObjectId, campaign.id),
+          ))
+          .limit(1);
+
+        if (existing) {
+          await db.update(plannerItemsTable).set({
+            title,
+            plannedDate,
+            status: plannerStatus,
+            laneName,
+            syncStatus: "synced",
+            lastSyncAt: new Date(),
+            updatedAt: new Date(),
+          }).where(eq(plannerItemsTable.id, existing.id));
+          campaignsUpdated++;
+        } else {
+          await db.insert(plannerItemsTable).values({
+            workspaceId,
+            laneGroup: "email",
+            laneName,
+            title,
+            plannedDate,
+            status: plannerStatus,
+            approvalStatus: "pending",
+            priority: "medium",
+            assetLinks: [],
+            externalSource: "highlevel_email",
+            externalObjectType: "email_campaign",
+            externalObjectId: campaign.id,
+            syncStatus: "synced",
+            lastSyncAt: new Date(),
+          });
+          campaignsCreated++;
+        }
+      } catch (err) {
+        campaignsFailed++;
+        errors.push(`Campaign ${campaign.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    await db.update(integrationsTable).set({ lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(eq(integrationsTable.id, integrationId));
+
+    const total = campaignsCreated + campaignsUpdated;
+    res.json({
+      success: errors.length === 0,
+      campaignsFound: campaigns.length,
+      campaignsCreated,
+      campaignsUpdated,
+      campaignsFailed,
+      campaignsSynced: total,
+      message: total > 0
+        ? `Synced ${total} email campaign${total !== 1 ? "s" : ""} (${campaignsCreated} new, ${campaignsUpdated} updated)`
+        : campaigns.length > 0 ? "No changes — all campaigns already up to date" : "No email campaigns found for this location",
+      errors,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Email sync failed: ${msg}` });
+  }
+});
+
 function formatIntegration(i: typeof integrationsTable.$inferSelect) {
   return {
     id: i.id,

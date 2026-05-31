@@ -982,18 +982,18 @@ const HL_EMAIL_STATUS_TO_PLANNER: Record<string, string> = {
 async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<HLEmailCampaign[]> {
   const all: HLEmailCampaign[] = [];
   const limit = 100;
-  let skip = 0;
+  let offset = 0;
   for (;;) {
-    const url = `https://services.leadconnectorhq.com/campaigns/?locationId=${encodeURIComponent(locationId)}&limit=${limit}&skip=${skip}`;
+    const url = `https://services.leadconnectorhq.com/emails/schedule?locationId=${encodeURIComponent(locationId)}&limit=${limit}&offset=${offset}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
     });
     if (!res.ok) break;
-    const data = await res.json() as { campaigns?: HLEmailCampaign[] };
-    const campaigns = data.campaigns ?? [];
+    const data = await res.json() as { campaigns?: HLEmailCampaign[]; data?: HLEmailCampaign[] };
+    const campaigns = data.campaigns ?? data.data ?? [];
     all.push(...campaigns);
     if (campaigns.length < limit) break;
-    skip += limit;
+    offset += limit;
   }
   return all;
 }

@@ -986,18 +986,16 @@ const HL_EMAIL_STATUS_TO_PLANNER: Record<string, string> = {
   completed: "published",
 };
 
-async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<{ campaigns: HLEmailCampaign[]; rawSample: unknown }> {
+async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<HLEmailCampaign[]> {
   const all: HLEmailCampaign[] = [];
   const limit = 100;
   let offset = 0;
-  let rawSample: unknown = null;
   for (;;) {
     const url = `https://services.leadconnectorhq.com/emails/schedule?locationId=${encodeURIComponent(locationId)}&limit=${limit}&offset=${offset}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
     });
     const body = await res.text();
-    if (offset === 0) rawSample = body.slice(0, 1000); // capture first page for debug logging
     if (!res.ok) throw new Error(`HL Emails API ${res.status}: ${body.slice(0, 500)}`);
     let data: Record<string, unknown>;
     try { data = JSON.parse(body) as Record<string, unknown>; } catch { break; }
@@ -1013,7 +1011,7 @@ async function fetchAllHLEmailCampaigns(token: string, locationId: string): Prom
     if (campaigns.length < limit) break;
     offset += limit;
   }
-  return { campaigns: all, rawSample };
+  return all;
 }
 
 function hlEmailLaneName(campaign: HLEmailCampaign): string {
@@ -1045,8 +1043,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
   const errors: string[] = [];
 
   try {
-    const { campaigns, rawSample } = await fetchAllHLEmailCampaigns(integration.encryptedToken, integration.locationId);
-    req.log.info({ rawSample }, "[HL email] raw response sample");
+    const campaigns = await fetchAllHLEmailCampaigns(integration.encryptedToken, integration.locationId);
 
     for (const campaign of campaigns) {
       if (campaign.archived || campaign.deleted) continue;
@@ -1058,8 +1055,12 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
       const title = (campaign.subject || campaign.name || "Email Campaign").slice(0, 200);
       const plannerStatus = HL_EMAIL_STATUS_TO_PLANNER[campaign.status ?? ""] ?? "planned";
       const laneName = hlEmailLaneName(campaign);
-      const dateStr = campaign.scheduledAt ?? campaign.scheduleTime ?? campaign.startDate ?? campaign.createdAt ?? null;
-      const plannedDate = dateStr ? dateStr.split("T")[0] : null;
+      // Use the explicitly scheduled date if present; otherwise use today so the
+      // campaign appears in the current month's view and re-syncs refresh the date.
+      const explicitDate = campaign.scheduledAt ?? campaign.scheduleTime ?? campaign.startDate ?? null;
+      const plannedDate = explicitDate
+        ? explicitDate.split("T")[0]
+        : new Date().toISOString().split("T")[0];
 
       try {
         const [existing] = await db.select({ id: plannerItemsTable.id })

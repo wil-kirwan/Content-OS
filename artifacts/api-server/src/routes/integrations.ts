@@ -952,14 +952,21 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-blogs", async (req, 
 // ──────────────────────────────────────────────────────────────────────────────
 
 interface HLEmailCampaign {
-  id: string;
+  id?: string;
+  _id?: string;
   name?: string;
+  subject?: string;
   status?: string;
   type?: string;
+  campaignType?: string;
   scheduledAt?: string;
+  scheduleTime?: string;
   startDate?: string;
   createdAt?: string;
+  lastUpdatedAt?: string;
   updatedAt?: string;
+  archived?: boolean;
+  deleted?: boolean;
 }
 
 const HL_EMAIL_STATUS_TO_PLANNER: Record<string, string> = {
@@ -979,23 +986,34 @@ const HL_EMAIL_STATUS_TO_PLANNER: Record<string, string> = {
   completed: "published",
 };
 
-async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<HLEmailCampaign[]> {
+async function fetchAllHLEmailCampaigns(token: string, locationId: string): Promise<{ campaigns: HLEmailCampaign[]; rawSample: unknown }> {
   const all: HLEmailCampaign[] = [];
   const limit = 100;
   let offset = 0;
+  let rawSample: unknown = null;
   for (;;) {
     const url = `https://services.leadconnectorhq.com/emails/schedule?locationId=${encodeURIComponent(locationId)}&limit=${limit}&offset=${offset}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, Version: "2021-07-28", Accept: "application/json" },
     });
-    if (!res.ok) break;
-    const data = await res.json() as { campaigns?: HLEmailCampaign[]; data?: HLEmailCampaign[] };
-    const campaigns = data.campaigns ?? data.data ?? [];
+    const body = await res.text();
+    if (offset === 0) rawSample = body.slice(0, 1000); // capture first page for debug logging
+    if (!res.ok) throw new Error(`HL Emails API ${res.status}: ${body.slice(0, 500)}`);
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(body) as Record<string, unknown>; } catch { break; }
+    // HL returns the array under "schedules" for /emails/schedule
+    const campaigns = (
+      (Array.isArray(data.schedules) ? data.schedules : null) ??
+      (Array.isArray(data.campaigns) ? data.campaigns : null) ??
+      (Array.isArray(data.data) ? data.data : null) ??
+      (Array.isArray(data.emails) ? data.emails : null) ??
+      []
+    ) as HLEmailCampaign[];
     all.push(...campaigns);
     if (campaigns.length < limit) break;
     offset += limit;
   }
-  return all;
+  return { campaigns: all, rawSample };
 }
 
 function hlEmailLaneName(campaign: HLEmailCampaign): string {
@@ -1027,13 +1045,20 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
   const errors: string[] = [];
 
   try {
-    const campaigns = await fetchAllHLEmailCampaigns(integration.encryptedToken, integration.locationId);
+    const { campaigns, rawSample } = await fetchAllHLEmailCampaigns(integration.encryptedToken, integration.locationId);
+    req.log.info({ rawSample }, "[HL email] raw response sample");
 
     for (const campaign of campaigns) {
-      const title = (campaign.name || "Email Campaign").slice(0, 200);
+      if (campaign.archived || campaign.deleted) continue;
+
+      const externalId = campaign._id ?? campaign.id ?? "";
+      if (!externalId) continue;
+
+      // HL uses "subject" as the email subject line; "name" is the sender name
+      const title = (campaign.subject || campaign.name || "Email Campaign").slice(0, 200);
       const plannerStatus = HL_EMAIL_STATUS_TO_PLANNER[campaign.status ?? ""] ?? "planned";
       const laneName = hlEmailLaneName(campaign);
-      const dateStr = campaign.scheduledAt ?? campaign.startDate ?? null;
+      const dateStr = campaign.scheduledAt ?? campaign.scheduleTime ?? campaign.startDate ?? campaign.createdAt ?? null;
       const plannedDate = dateStr ? dateStr.split("T")[0] : null;
 
       try {
@@ -1042,7 +1067,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
           .where(and(
             eq(plannerItemsTable.workspaceId, workspaceId),
             eq(plannerItemsTable.externalSource, "highlevel_email"),
-            eq(plannerItemsTable.externalObjectId, campaign.id),
+            eq(plannerItemsTable.externalObjectId, externalId),
           ))
           .limit(1);
 
@@ -1070,7 +1095,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
             assetLinks: [],
             externalSource: "highlevel_email",
             externalObjectType: "email_campaign",
-            externalObjectId: campaign.id,
+            externalObjectId: externalId,
             syncStatus: "synced",
             lastSyncAt: new Date(),
           });
@@ -1078,7 +1103,7 @@ router.post("/workspaces/:workspaceId/integrations/:id/sync-emails", async (req,
         }
       } catch (err) {
         campaignsFailed++;
-        errors.push(`Campaign ${campaign.id}: ${err instanceof Error ? err.message : String(err)}`);
+        errors.push(`Campaign ${externalId}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 

@@ -583,6 +583,10 @@ export interface CreateTemplateBody {
   items: TemplateItem[];
 }
 
+export interface ImportTemplatesBody {
+  templates: CreateTemplateBody[];
+}
+
 export interface ApplyTemplateBody {
   /** YYYY-MM */
   month: string;

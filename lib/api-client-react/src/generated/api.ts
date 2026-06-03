@@ -36,6 +36,7 @@ import type {
   GetPlannerItemsParams,
   GetRecentActivityParams,
   HealthStatus,
+  ImportTemplatesBody,
   Integration,
   LogoutSuccess,
   MobileTokenExchangeRequest,
@@ -2370,6 +2371,93 @@ export const useCreateTemplate = <
   TContext
 > => {
   return useMutation(getCreateTemplateMutationOptions(options));
+};
+
+/**
+ * @summary Import multiple templates from parsed file data
+ */
+export const getImportTemplatesUrl = (workspaceId: number) => {
+  return `/api/workspaces/${workspaceId}/templates/import`;
+};
+
+export const importTemplates = async (
+  workspaceId: number,
+  importTemplatesBody: ImportTemplatesBody,
+  options?: RequestInit,
+): Promise<Template[]> => {
+  return customFetch<Template[]>(getImportTemplatesUrl(workspaceId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(importTemplatesBody),
+  });
+};
+
+export const getImportTemplatesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importTemplates>>,
+    TError,
+    { workspaceId: number; data: BodyType<ImportTemplatesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof importTemplates>>,
+  TError,
+  { workspaceId: number; data: BodyType<ImportTemplatesBody> },
+  TContext
+> => {
+  const mutationKey = ["importTemplates"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof importTemplates>>,
+    { workspaceId: number; data: BodyType<ImportTemplatesBody> }
+  > = (props) => {
+    const { workspaceId, data } = props ?? {};
+
+    return importTemplates(workspaceId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ImportTemplatesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof importTemplates>>
+>;
+export type ImportTemplatesMutationBody = BodyType<ImportTemplatesBody>;
+export type ImportTemplatesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Import multiple templates from parsed file data
+ */
+export const useImportTemplates = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof importTemplates>>,
+    TError,
+    { workspaceId: number; data: BodyType<ImportTemplatesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof importTemplates>>,
+  TError,
+  { workspaceId: number; data: BodyType<ImportTemplatesBody> },
+  TContext
+> => {
+  return useMutation(getImportTemplatesMutationOptions(options));
 };
 
 /**

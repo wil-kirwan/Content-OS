@@ -650,6 +650,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/Template"
 
+  /workspaces/{workspaceId}/templates/import:
+    post:
+      operationId: importTemplates
+      tags: [templates]
+      summary: Import multiple templates from parsed file data
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportTemplatesBody"
+      responses:
+        "201":
+          description: Templates imported
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+
   /workspaces/{workspaceId}/templates/{id}:
     get:
       operationId: getTemplate
@@ -1541,6 +1568,16 @@ components:
         - name
         - category
         - items
+
+    ImportTemplatesBody:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateTemplateBody"
+      required:
+        - templates
 
     ApplyTemplateBody:
       type: object

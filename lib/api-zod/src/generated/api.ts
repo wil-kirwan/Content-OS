@@ -741,6 +741,35 @@ export const CreateTemplateBody = zod.object({
 });
 
 /**
+ * @summary Import multiple templates from parsed file data
+ */
+export const ImportTemplatesParams = zod.object({
+  workspaceId: zod.coerce.number(),
+});
+
+export const ImportTemplatesBody = zod.object({
+  templates: zod.array(
+    zod.object({
+      name: zod.string(),
+      description: zod.string().nullish(),
+      category: zod.string(),
+      items: zod.array(
+        zod.object({
+          laneGroup: zod.string(),
+          laneName: zod.string(),
+          title: zod.string(),
+          description: zod.string().nullish(),
+          dayOffset: zod.number(),
+          channelType: zod.string().nullish(),
+          contentFormat: zod.string().nullish(),
+          priority: zod.string(),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
  * @summary Get template
  */
 export const GetTemplateParams = zod.object({

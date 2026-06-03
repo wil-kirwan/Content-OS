@@ -39,6 +39,7 @@ export * from "./getDashboardSummaryParams";
 export * from "./getPlannerItemsParams";
 export * from "./getRecentActivityParams";
 export * from "./healthStatus";
+export * from "./importTemplatesBody";
 export * from "./integration";
 export * from "./integrationStatus";
 export * from "./logoutMobileSessionResponse";

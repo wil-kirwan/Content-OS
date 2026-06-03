@@ -8,6 +8,7 @@ import {
   GetTemplateParams,
   DeleteTemplateParams,
   ApplyTemplateBody,
+  ImportTemplatesBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -43,6 +44,32 @@ router.post("/workspaces/:workspaceId/templates", async (req, res): Promise<void
     items: parsed.data.items,
   }).returning();
   res.status(201).json(formatTemplate(template));
+});
+
+router.post("/workspaces/:workspaceId/templates/import", async (req, res): Promise<void> => {
+  const params = CreateTemplateParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = ImportTemplatesBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const created = await Promise.all(
+    parsed.data.templates.map(async (t) => {
+      const [template] = await db.insert(templatesTable).values({
+        workspaceId: params.data.workspaceId,
+        name: t.name,
+        description: t.description ?? null,
+        category: t.category,
+        items: t.items,
+      }).returning();
+      return formatTemplate(template);
+    })
+  );
+  res.status(201).json(created);
 });
 
 router.get("/workspaces/:workspaceId/templates/:id", async (req, res): Promise<void> => {

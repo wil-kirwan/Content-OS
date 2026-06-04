@@ -66,6 +66,7 @@ export * from "./updatePlannerItemBodyLaneGroup";
 export * from "./updatePlannerItemBodyPriority";
 export * from "./updatePlannerItemBodyStatus";
 export * from "./updateWorkspaceBody";
+export * from "./userWorkspaceEnvelope";
 export * from "./validationResult";
 export * from "./webhookAck";
 export * from "./workspace";

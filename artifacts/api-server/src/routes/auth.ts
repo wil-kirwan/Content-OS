@@ -6,7 +6,8 @@ import {
   ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, workspaceMembersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -18,6 +19,8 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+
+const ADMIN_EMAIL = "wil.kirwan@gmail.com";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 
@@ -88,6 +91,30 @@ router.get("/auth/user", (req: Request, res: Response) => {
       user: req.isAuthenticated() ? req.user : null,
     }),
   );
+});
+
+router.get("/auth/user/workspace", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.json({ workspaceId: null });
+    return;
+  }
+
+  if (req.user.email === ADMIN_EMAIL) {
+    const [firstMembership] = await db
+      .select()
+      .from(workspaceMembersTable)
+      .limit(1);
+    res.json({ workspaceId: firstMembership?.workspaceId ?? 1 });
+    return;
+  }
+
+  const [membership] = await db
+    .select()
+    .from(workspaceMembersTable)
+    .where(eq(workspaceMembersTable.userId, req.user.id))
+    .limit(1);
+
+  res.json({ workspaceId: membership?.workspaceId ?? null });
 });
 
 router.get("/login", async (req: Request, res: Response) => {

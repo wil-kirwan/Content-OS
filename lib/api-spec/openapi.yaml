@@ -866,6 +866,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthUserEnvelope'
+
+  /auth/user/workspace:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUserWorkspace
+      summary: Get the workspace associated with the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: User workspace resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWorkspaceEnvelope'
   /login:
     get:
       tags: [Auth]
@@ -976,6 +992,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/AuthUser'
             - type: 'null'
+    UserWorkspaceEnvelope:
+      type: object
+      required: [workspaceId]
+      properties:
+        workspaceId:
+          type: [integer, 'null']
     GetCurrentAuthUserResponse:
       type: object
       required: [user]

@@ -1044,6 +1044,20 @@ export const GetCurrentAuthUserResponse = zod.object({
 });
 
 /**
+ * @summary Get the workspace associated with the current user
+ */
+export const GetCurrentUserWorkspaceHeader = zod.object({
+  Authorization: zod
+    .string()
+    .optional()
+    .describe("Opaque session token — `Bearer <sid>`."),
+});
+
+export const GetCurrentUserWorkspaceResponse = zod.object({
+  workspaceId: zod.number().nullable(),
+});
+
+/**
  * @summary Start the browser OIDC login flow
  */
 export const BeginBrowserLoginQueryParams = zod.object({

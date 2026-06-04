@@ -21,6 +21,11 @@ export interface AuthUserEnvelope {
   user: AuthUser | null;
 }
 
+export interface UserWorkspaceEnvelope {
+  /** @nullable */
+  workspaceId: number | null;
+}
+
 export interface GetCurrentAuthUserResponse {
   user: AuthUser | null;
 }

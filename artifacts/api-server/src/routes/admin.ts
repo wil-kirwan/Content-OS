@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, usersTable, webhookEventsTable } from "@workspace/db";
-import { desc, count } from "drizzle-orm";
+import { db, usersTable, webhookEventsTable, workspaceMembersTable, workspacesTable } from "@workspace/db";
+import { desc, count, eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -68,6 +68,83 @@ router.get("/admin/webhook-events", async (req: Request, res: Response): Promise
     page,
     pages: Math.ceil(total / limit),
   });
+});
+
+router.get("/admin/workspace-members", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const workspaceId = req.query.workspaceId ? parseInt(String(req.query.workspaceId), 10) : undefined;
+
+  const members = await db
+    .select({
+      userId: workspaceMembersTable.userId,
+      workspaceId: workspaceMembersTable.workspaceId,
+      role: workspaceMembersTable.role,
+      createdAt: workspaceMembersTable.createdAt,
+      email: usersTable.email,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      profileImageUrl: usersTable.profileImageUrl,
+    })
+    .from(workspaceMembersTable)
+    .innerJoin(usersTable, eq(workspaceMembersTable.userId, usersTable.id))
+    .where(workspaceId ? eq(workspaceMembersTable.workspaceId, workspaceId) : undefined)
+    .orderBy(workspaceMembersTable.createdAt);
+
+  res.json(members.map((m) => ({
+    userId: m.userId,
+    workspaceId: m.workspaceId,
+    role: m.role,
+    createdAt: m.createdAt.toISOString(),
+    email: m.email,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    profileImageUrl: m.profileImageUrl,
+  })));
+});
+
+router.post("/admin/workspace-members", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const { userId, workspaceId, role } = req.body as { userId: string; workspaceId: number; role?: string };
+  if (!userId || !workspaceId) {
+    res.status(400).json({ error: "userId and workspaceId are required" });
+    return;
+  }
+
+  const [member] = await db
+    .insert(workspaceMembersTable)
+    .values({ userId, workspaceId, role: role ?? "member" })
+    .onConflictDoUpdate({
+      target: [workspaceMembersTable.userId, workspaceMembersTable.workspaceId],
+      set: { role: role ?? "member" },
+    })
+    .returning();
+
+  res.json(member);
+});
+
+router.delete("/admin/workspace-members/:userId", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+
+  const { userId } = req.params;
+  const workspaceId = parseInt(String(req.query.workspaceId), 10);
+  if (!workspaceId) {
+    res.status(400).json({ error: "workspaceId query param required" });
+    return;
+  }
+
+  await db
+    .delete(workspaceMembersTable)
+    .where(and(eq(workspaceMembersTable.userId, userId), eq(workspaceMembersTable.workspaceId, workspaceId)));
+
+  res.json({ success: true });
+});
+
+router.get("/admin/workspaces", async (req: Request, res: Response): Promise<void> => {
+  if (!requireAdmin(req, res)) return;
+  const workspaces = await db.select().from(workspacesTable).orderBy(workspacesTable.id);
+  res.json(workspaces);
 });
 
 export default router;

@@ -48,6 +48,7 @@ import type {
   UpdateIntegrationBody,
   UpdatePlannerItemBody,
   UpdateWorkspaceBody,
+  UserWorkspaceEnvelope,
   ValidationResult,
   WebhookAck,
   Workspace,
@@ -3241,6 +3242,82 @@ export function useGetCurrentAuthUser<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetCurrentAuthUserQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get the workspace associated with the current user
+ */
+export const getGetCurrentUserWorkspaceUrl = () => {
+  return `/api/auth/user/workspace`;
+};
+
+export const getCurrentUserWorkspace = async (
+  options?: RequestInit,
+): Promise<UserWorkspaceEnvelope> => {
+  return customFetch<UserWorkspaceEnvelope>(getGetCurrentUserWorkspaceUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetCurrentUserWorkspaceQueryKey = () => {
+  return [`/api/auth/user/workspace`] as const;
+};
+
+export const getGetCurrentUserWorkspaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getCurrentUserWorkspace>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentUserWorkspace>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetCurrentUserWorkspaceQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getCurrentUserWorkspace>>
+  > = ({ signal }) => getCurrentUserWorkspace({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentUserWorkspace>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetCurrentUserWorkspaceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getCurrentUserWorkspace>>
+>;
+export type GetCurrentUserWorkspaceQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get the workspace associated with the current user
+ */
+
+export function useGetCurrentUserWorkspace<
+  TData = Awaited<ReturnType<typeof getCurrentUserWorkspace>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getCurrentUserWorkspace>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCurrentUserWorkspaceQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
